@@ -27,13 +27,21 @@ recovery key. Old backups remain accessible with their old credentials.
 
 All data commands acquire an operation lease through VaultManager. Locking
 closes admission first, drains the current agent command for up to 65 seconds,
-cancels remaining tasks, and disconnects terminals. The database is sealed only
-after tasks, terminals, and operation leases finish. The renderer has up to
+cancels remaining tasks, and closes SFTP/forwarding connections. Authenticated
+terminal transports and bounded terminal buffers remain in standby across lock.
+Terminal input and resize operations require an unlocked vault; output credit
+acknowledgements remain available without a data lease. The database is sealed
+only after tasks, network operations, and operation leases finish. The renderer has up to
 three seconds to persist its final transcript through a write-only snapshot
 path; a hung renderer cannot indefinitely defer locking. Unflushed display-only
 tokens can be lost in that exceptional case; execution/audit state is stored
 independently by the backend. Any surviving DB Arc refers to an empty in-memory
 connection after sealing. Reopening reconciles interrupted work without replay.
+Only terminal components remain mounted behind the hidden, inert lock screen;
+forms, chat, and other data views unmount. Terminal output and transport session
+keys therefore remain in process memory while locked. Output parsing pauses
+until unlock; byte credits bound queued output and apply backpressure. Closing a terminal tab or
+exiting Selai ends that transport; the server or network can still disconnect it.
 
 Auto-lock uses monotonic time since user interaction. Windows lock state is
 polled every 250 ms using the current process's WTS session, and native power

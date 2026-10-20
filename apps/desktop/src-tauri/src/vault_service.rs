@@ -2,7 +2,10 @@
 #[cfg(test)]
 #[path = "vault_tests.rs"]
 mod tests;
-use crate::{dto::CommandError, service::Services};
+use crate::{
+    dto::CommandError,
+    service::{Services, TerminalRegistry},
+};
 use selai_domain::ErrorCode;
 use selai_secrets::{KeyringStore, SecretError, SecretKey, SecretStore, SecretValue};
 use selai_storage::Database;
@@ -87,6 +90,13 @@ pub struct VaultManager {
     status_sink: Mutex<Option<StatusSink>>,
     last_status: Mutex<Option<VaultStatus>>,
     last_published: std::sync::atomic::AtomicU64,
+    terminals: TerminalRegistry,
+}
+
+impl Drop for VaultManager {
+    fn drop(&mut self) {
+        self.terminals.close();
+    }
 }
 pub struct ServiceLease {
     services: Arc<Services>,
@@ -161,6 +171,7 @@ impl VaultManager {
             status_sink: Mutex::new(None),
             last_status: Mutex::new(None),
             last_published: std::sync::atomic::AtomicU64::new(0),
+            terminals: TerminalRegistry::default(),
             inner: Mutex::new(Inner {
                 vault: None,
                 services: None,
@@ -193,7 +204,7 @@ impl VaultManager {
             legacy_found: self.dir.join("selai.sqlite3").exists(),
             timeout_minutes: i.timeout_minutes,
             active_tasks: i.services.as_ref().map_or(0, |s| s.agent.active_count()),
-            terminals: i.services.as_ref().map_or(0, |s| s.terminal_count()),
+            terminals: self.terminals.count(),
             cleanup_pending: i.cleanup_pending,
             retry_after_ms: i
                 .retry_at
@@ -266,6 +277,10 @@ impl VaultManager {
             manager: self.clone(),
         })
     }
+
+    pub fn terminal_ack(&self, session_id: &str, bytes: usize) -> Result<(), CommandError> {
+        self.terminals.acknowledge(session_id, bytes)
+    }
     pub fn activity(&self) -> Result<(), CommandError> {
         let mut i = self.inner.lock().map_err(error)?;
         if i.locking
@@ -310,6 +325,7 @@ impl VaultManager {
         let db = Arc::new(Mutex::new(db));
         let mut services =
             Services::with_shared_database(db.clone(), Arc::new(DatabaseSecrets(db)), report)?;
+        services.terminal_registry = self.terminals.clone();
         services.export_dir = Some(self.dir.join("exports"));
         services.vault_managed = true;
         let weak = Arc::downgrade(self);
@@ -494,7 +510,6 @@ impl VaultManager {
         };
         self.publish_status();
         let started = Instant::now();
-        services.close_terminals().await;
         services.close_network().await;
         let mut flush_started = None;
         loop {
@@ -505,7 +520,6 @@ impl VaultManager {
                 let mut i = self.inner.lock().map_err(error)?;
                 if self.leases.load(Ordering::SeqCst) == 0
                     && services.agent.active_count() == 0
-                    && services.terminal_count() == 0
                     && services.network_active_count() == 0
                 {
                     i.flush_required = true;

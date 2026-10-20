@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { describeError, sshKeyDelete, sshKeyGenerate, sshKeyImport, sshKeyList, type SshKeyView } from '../ipc';
+import { describeError, sshKeyDelete, sshKeyGenerate, sshKeyImport, sshKeyImportFromFile, sshKeyList, sshKeyScanLocal, type SshKeyView } from '../ipc';
 import { Field } from '../ui/Field';
+import { ThemedSelect } from '../ui/ThemedSelect';
 import { Dialog, Drawer } from '../ui/Overlay';
-import { ImportIcon, KeyIcon, PlusIcon, RefreshIcon, SearchIcon, TrashIcon } from '../ui/icons';
+import { FolderIcon, ImportIcon, KeyIcon, PlusIcon, RefreshIcon, SearchIcon, TrashIcon } from '../ui/icons';
 
 interface Props {
   visible: boolean;
@@ -29,6 +30,8 @@ export function SshKeysPage({ visible, onReturnToProfile }: Props) {
   const [deleting, setDeleting] = useState<SshKeyView | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -68,6 +71,19 @@ export function SshKeysPage({ visible, onReturnToProfile }: Props) {
     finally { setDeletingBusy(false); }
   }
 
+  async function scanLocalKeys() {
+    setScanning(true); setError(null); setScanNote(null);
+    try {
+      const result = await sshKeyScanLocal();
+      if (result.imported.length) setKeys((items) => [...result.imported, ...items]);
+      const parts = [`Imported ${result.imported.length} key${result.imported.length === 1 ? '' : 's'}.`];
+      if (result.alreadySaved) parts.push(`${result.alreadySaved} already saved.`);
+      if (result.skipped) parts.push(`${result.skipped} unsupported or encrypted file${result.skipped === 1 ? '' : 's'} skipped; import encrypted keys individually with their passphrase.`);
+      setScanNote(parts.join(' '));
+    } catch (err) { setError(describeError(err)); }
+    finally { setScanning(false); }
+  }
+
   const q = query.trim().toLowerCase();
   const filtered = keys.filter((key) => !q || [key.name, key.algorithm, key.fingerprintSha256].some((value) => value.toLowerCase().includes(q)));
 
@@ -77,6 +93,9 @@ export function SshKeysPage({ visible, onReturnToProfile }: Props) {
         <div><h1>SSH Keys</h1><p>Generate or import a key once, then select it in any SSH profile.</p></div>
         <span className="grow" />
         <div className="ssh-key-actions">
+          <button className="btn" type="button" disabled={scanning} onClick={() => void scanLocalKeys()}>
+            {scanning ? <span className="spinner" /> : <FolderIcon size={15} />}{scanning ? 'Scanning…' : 'Scan ~/.ssh'}
+          </button>
           <button className="btn" type="button" onClick={() => setEditor('import')}><ImportIcon size={15} /> Import key</button>
           <button className="btn btn-primary" type="button" onClick={() => setEditor('generate')}><PlusIcon size={15} /> Generate key</button>
         </div>
@@ -86,6 +105,7 @@ export function SshKeysPage({ visible, onReturnToProfile }: Props) {
         <button className="btn btn-sm" type="button" onClick={onReturnToProfile}>Back to SSH profile</button>
       </div>}
       {error && <p className="banner" data-tone="danger" role="alert">{error}</p>}
+      {scanNote && <p className="banner" data-tone="success" role="status">{scanNote}</p>}
       <div className="ssh-key-toolbar">
         <div className="ssh-key-search"><SearchIcon size={15} />
           <input type="search" aria-label="Filter SSH keys" placeholder="Search keys…" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -160,6 +180,16 @@ function KeyEditor({ mode, onClose, onCreated }: { mode: Mode; onClose: () => vo
     finally { bytes?.fill(0); setBusy(false); }
   }
 
+  async function chooseFromSshFolder() {
+    if (!name.trim()) { setError('Enter a name for the key first.'); return; }
+    setBusy(true); setError(null);
+    try {
+      const key = await sshKeyImportFromFile(name.trim(), passphrase || undefined);
+      if (key) { setPassphrase(''); onCreated(key); }
+    } catch (err) { setError(describeError(err)); }
+    finally { setBusy(false); }
+  }
+
   return <Drawer title={mode === 'generate' ? 'Generate SSH key' : 'Import SSH key'}
     subtitle="Stored securely in your encrypted vault." onClose={() => { if (!busy) onClose(); }}
     footer={<><button className="btn btn-ghost" type="button" disabled={busy} onClick={onClose}>Cancel</button><span className="grow" />
@@ -172,15 +202,17 @@ function KeyEditor({ mode, onClose, onCreated }: { mode: Mode; onClose: () => vo
         <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Work laptop" maxLength={80} disabled={busy} />
       </Field>
       {mode === 'generate' ? <>
-        <Field label="Algorithm"><select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)} disabled={busy}>
-          {ALGORITHMS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select></Field>
+        <Field label="Algorithm"><ThemedSelect label="Algorithm" value={algorithm} onChange={setAlgorithm} disabled={busy}
+          options={ALGORITHMS.map(([value, label]) => ({ value: value!, label: label! }))} /></Field>
         <p className="hint">Ed25519 is the default. Generated private keys stay in the backend and are encrypted by your vault passphrase.</p>
         {algorithm.startsWith('rsa-') && <p className="hint">Generating RSA keys can take longer, especially at 8192 bits. RSA authentication requires SHA-2 support on the server.</p>}
       </> : <>
         <Field label="Private key file" hint="OpenSSH or PEM format, up to 1 MB.">
           <input type="file" disabled={busy} onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </Field>
+        <button className="btn btn-sm" type="button" disabled={busy} onClick={() => void chooseFromSshFolder()}>
+          {busy ? 'Reading key…' : 'Choose from ~/.ssh'}
+        </button>
         <Field label="Key passphrase" hint="Required only if the imported key is encrypted.">
           <input type="password" autoComplete="off" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} disabled={busy} />
         </Field>

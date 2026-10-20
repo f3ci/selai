@@ -4,7 +4,10 @@ import * as ipc from '../ipc';
 import { HostsSidebar } from './HostsSidebar';
 
 afterEach(() => vi.restoreAllMocks());
-beforeEach(() => vi.spyOn(ipc, 'groupList').mockResolvedValue([]));
+beforeEach(() => {
+  localStorage.removeItem('selai.hosts.collapsed-groups');
+  vi.spyOn(ipc, 'groupList').mockResolvedValue([]);
+});
 
 describe('HostsSidebar', () => {
   it('creates a group from the SSH hosts header and closes the create dialog', async () => {
@@ -86,6 +89,18 @@ describe('HostsSidebar', () => {
     expect(screen.getByRole('button', { name: 'Connect to Web' })).toBeInTheDocument();
     expect(screen.queryByText('Lab')).not.toBeInTheDocument();
     expect(list).toHaveBeenCalledTimes(1);
+  });
+  it('remembers collapsed groups after the sidebar is remounted', async () => {
+    vi.spyOn(ipc, 'localHost').mockRejectedValue(new Error('unavailable'));
+    vi.mocked(ipc.groupList).mockResolvedValue([{ id: 'prod', name: 'Production', sortOrder: 0 }]);
+    vi.spyOn(ipc, 'hostList').mockResolvedValue({ items: [], nextCursor: null });
+    const first = render(<HostsSidebar onConnect={vi.fn()} />);
+    const group = await screen.findByRole('button', { name: 'Group Production' });
+    fireEvent.click(group);
+    expect(group).toHaveAttribute('aria-expanded', 'false');
+    first.unmount();
+    render(<HostsSidebar onConnect={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Group Production' })).toHaveAttribute('aria-expanded', 'false');
   });
   it('shows only edit and archive actions, and keeps them separate from connecting', async () => {
     vi.spyOn(ipc, 'localHost').mockRejectedValue(new Error('unavailable'));

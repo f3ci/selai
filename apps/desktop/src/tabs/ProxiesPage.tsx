@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { describeError } from '../ipc';
 import { proxyList, proxySave, proxyDelete, type ProxyProfile, type ProxyInput } from '../network';
 import { Field } from '../ui/Field';
+import { ThemedSelect } from '../ui/ThemedSelect';
 import { PasswordInput } from '../ui/PasswordInput';
 import { Drawer, Dialog } from '../ui/Overlay';
 import { PlusIcon, EditIcon, TrashIcon, ProxyIcon, SearchIcon } from '../ui/icons';
@@ -258,19 +259,8 @@ function ProxyEditor({
           />
         </Field>
         <Field label="Proxy protocol">
-          <select
-            value={form.kind}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                kind: e.target.value as ProxyInput['kind'],
-                port: e.target.value === 'http' ? 8080 : 1080,
-              })
-            }
-          >
-            <option value="socks5">SOCKS5 · remote DNS</option>
-            <option value="http">HTTP CONNECT</option>
-          </select>
+          <ThemedSelect label="Proxy protocol" value={form.kind} options={[{ value: 'socks5', label: 'SOCKS5 · remote DNS' }, { value: 'http', label: 'HTTP CONNECT' }]}
+            onChange={(value) => setForm({ ...form, kind: value as ProxyInput['kind'], port: value === 'http' ? 8080 : 1080 })} />
         </Field>
         <div className="field-row">
           <Field label="Proxy host">

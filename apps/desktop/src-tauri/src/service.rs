@@ -61,6 +61,63 @@ struct TerminalHandle {
     _slot: Arc<tokio::sync::OwnedSemaphorePermit>,
 }
 
+/// Authenticated transports outlive the vault connection. No database, vault
+/// key, login password or private key is retained by this registry.
+#[derive(Clone)]
+pub(crate) struct TerminalRegistry {
+    sessions: Arc<Mutex<HashMap<String, TerminalHandle>>>,
+    slots: Arc<tokio::sync::Semaphore>,
+}
+
+impl Default for TerminalRegistry {
+    fn default() -> Self {
+        Self {
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            slots: Arc::new(tokio::sync::Semaphore::new(16)),
+        }
+    }
+}
+
+impl TerminalRegistry {
+    pub(crate) fn count(&self) -> usize {
+        self.sessions
+            .lock()
+            .map(|sessions| sessions.len())
+            .unwrap_or(usize::MAX)
+    }
+
+    pub(crate) fn close(&self) {
+        let stops: Vec<_> = self
+            .sessions
+            .lock()
+            .map(|sessions| {
+                sessions
+                    .values()
+                    .map(|handle| handle.stop.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for stop in stops {
+            stop();
+        }
+    }
+
+    /// Acknowledgement only releases bounded output credits. It admits no
+    /// terminal input and reads no vault data, so it is also safe while locked.
+    pub(crate) fn acknowledge(&self, session_id: &str, bytes: usize) -> Result<(), CommandError> {
+        let sessions = self.sessions.lock().map_err(|_| poisoned())?;
+        if let Some(flow) = sessions
+            .get(session_id)
+            .and_then(|handle| handle.flow.as_ref())
+        {
+            if !flow.acknowledge(bytes) {
+                return Err(invalid_message("Invalid terminal output acknowledgement."));
+            }
+        }
+        Ok(())
+    }
+}
+
 pub(crate) type DocumentSealer = Arc<dyn Fn(&[u8]) -> Result<Vec<u8>, CommandError> + Send + Sync>;
 
 pub struct Services {
@@ -71,8 +128,7 @@ pub struct Services {
     /// Where history exports are written. `None` for an in-memory database.
     pub(crate) export_dir: Option<std::path::PathBuf>,
     probes: Mutex<HashMap<HostId, CachedProbe>>,
-    terminals: Arc<Mutex<HashMap<String, TerminalHandle>>>,
-    terminal_slots: Arc<tokio::sync::Semaphore>,
+    pub(crate) terminal_registry: TerminalRegistry,
     pub(crate) document_sealer: Option<DocumentSealer>,
     pub(crate) vault_managed: bool,
     pub(crate) network: Arc<crate::network_service::NetworkRegistry>,
@@ -125,8 +181,7 @@ impl Services {
             agent: Arc::new(crate::agent_service::AgentRegistry::default()),
             export_dir: None,
             probes: Mutex::new(HashMap::new()),
-            terminals: Arc::new(Mutex::new(HashMap::new())),
-            terminal_slots: Arc::new(tokio::sync::Semaphore::new(16)),
+            terminal_registry: TerminalRegistry::default(),
             document_sealer: None,
             vault_managed: false,
             network: Arc::new(crate::network_service::NetworkRegistry::default()),
@@ -142,21 +197,7 @@ impl Services {
     }
 
     pub(crate) fn terminal_count(&self) -> usize {
-        self.terminals
-            .lock()
-            .map(|map| map.len())
-            .unwrap_or(usize::MAX)
-    }
-
-    pub(crate) async fn close_terminals(&self) {
-        let handles: Vec<_> = self
-            .terminals
-            .lock()
-            .map(|map| map.values().map(|handle| handle.stop.clone()).collect())
-            .unwrap_or_default();
-        for stop in handles {
-            stop();
-        }
+        self.terminal_registry.count()
     }
 
     pub fn app_info() -> AppInfo {
@@ -792,7 +833,8 @@ impl Services {
         flow: Option<Arc<TerminalFlow>>,
     ) -> Result<String, CommandError> {
         let slot = Arc::new(
-            self.terminal_slots
+            self.terminal_registry
+                .slots
                 .clone()
                 .try_acquire_owned()
                 .map_err(|_| {
@@ -839,21 +881,25 @@ impl Services {
         let shutdown = tokio_util::sync::CancellationToken::new();
         let stop = shutdown.clone();
         let stop_flow = flow.clone();
-        self.terminals.lock().map_err(|_| poisoned())?.insert(
-            session_id.clone(),
-            TerminalHandle {
-                host_id: id,
-                input: tx,
-                stop: Arc::new(move || {
-                    if let Some(flow) = &stop_flow {
-                        flow.close();
-                    }
-                    stop.cancel();
-                }),
-                flow: flow.clone(),
-                _slot: slot,
-            },
-        );
+        self.terminal_registry
+            .sessions
+            .lock()
+            .map_err(|_| poisoned())?
+            .insert(
+                session_id.clone(),
+                TerminalHandle {
+                    host_id: id,
+                    input: tx,
+                    stop: Arc::new(move || {
+                        if let Some(flow) = &stop_flow {
+                            flow.close();
+                        }
+                        stop.cancel();
+                    }),
+                    flow: flow.clone(),
+                    _slot: slot,
+                },
+            );
         let _ = self.lock_db()?.mark_connected(id, now_ms());
 
         tokio::spawn(run_terminal(
@@ -862,7 +908,7 @@ impl Services {
             shell,
             rx,
             sink,
-            Arc::clone(&self.terminals),
+            Arc::clone(&self.terminal_registry.sessions),
             shutdown,
             flow,
         ));
@@ -881,8 +927,12 @@ impl Services {
     ) -> Result<String, CommandError> {
         let session_id = HostId::new().to_string();
         let (tx, rx) = mpsc::channel(64);
-        let mut map = self.terminals.lock().map_err(|_| poisoned())?;
-        let terminals = Arc::clone(&self.terminals);
+        let mut map = self
+            .terminal_registry
+            .sessions
+            .lock()
+            .map_err(|_| poisoned())?;
+        let terminals = Arc::clone(&self.terminal_registry.sessions);
         let ended = session_id.clone();
         let stop = crate::local_terminal::spawn_local_shell(
             cols,
@@ -930,16 +980,7 @@ impl Services {
     }
 
     pub fn terminal_ack(&self, session_id: &str, bytes: usize) -> Result<(), CommandError> {
-        let sessions = self.terminals.lock().map_err(|_| poisoned())?;
-        if let Some(flow) = sessions
-            .get(session_id)
-            .and_then(|handle| handle.flow.as_ref())
-        {
-            if !flow.acknowledge(bytes) {
-                return Err(invalid_message("Invalid terminal output acknowledgement."));
-            }
-        }
-        Ok(())
+        self.terminal_registry.acknowledge(session_id, bytes)
     }
 
     pub async fn terminal_resize(
@@ -969,7 +1010,8 @@ impl Services {
     /// The host a live terminal session is bound to. Used by tests and by the
     /// UI to show which host a tab belongs to.
     pub fn terminal_host(&self, session_id: &str) -> Option<HostId> {
-        self.terminals
+        self.terminal_registry
+            .sessions
             .lock()
             .ok()?
             .get(session_id)
@@ -1003,7 +1045,8 @@ impl Services {
     }
 
     fn terminal(&self, session_id: &str) -> Result<TerminalHandle, CommandError> {
-        self.terminals
+        self.terminal_registry
+            .sessions
             .lock()
             .map_err(|_| poisoned())?
             .get(session_id)

@@ -112,6 +112,8 @@ pub fn run() {
             commands::host_move_group,
             commands::ssh_key_list,
             commands::ssh_key_import,
+            commands::ssh_key_import_from_file,
+            commands::ssh_key_scan_local,
             commands::ssh_key_generate,
             commands::ssh_key_delete,
             commands::kdbx_preview,

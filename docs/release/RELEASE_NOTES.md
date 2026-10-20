@@ -7,6 +7,34 @@ fixtures and mock providers. Windows packaging also checks encryption and the
 vault in the release build profile. This is not complete interactive coverage
 of every platform and live AI provider. The installers are not code-signed.
 
+## New in 0.3.1
+
+This preview adds theme choices, local SSH key import, prompt recall, and keeps
+terminal connections available across vault locking.
+
+- **Catppuccin themes:** choose Latte, Frappé, Macchiato, or Mocha alongside
+  dark, light, and system themes. Existing terminals, the unlock screen, and
+  terminal ANSI colors follow the saved palette. Palette data is included under
+  its MIT license in `docs/licenses/catppuccin.txt`.
+- **Import local SSH keys:** choose a private key from `~/.ssh`, including files
+  without extensions, or scan that directory for supported unencrypted keys.
+  Encrypted keys can be imported individually with their passphrase; unsupported
+  files and keys already in the vault are skipped.
+- **Recall chat prompts:** use the up and down arrows at the composer boundary to
+  move through earlier prompts while preserving the current draft. A recalled
+  prompt with a host that is no longer available cannot be sent until corrected.
+- **Terminal standby during vault lock:** locking blocks terminal input and new
+  operations, while existing SSH transports stay connected and terminal output
+  remains bounded in memory. Unlocking resumes those tabs. Closing a tab or
+  quitting Selai closes its connection. See `SECURITY.md` for the full behavior.
+- **Clearer task context:** agent requests include the selected host label and
+  connection address, and completed command output is refreshed from the saved
+  task timeline.
+- **Workspace polish:** shared themed pickers and refinements to History,
+  forwarding, SFTP, proxies, providers, SSH profiles, and chat.
+
+No vault database migration is included in this release.
+
 ## New in 0.3.0
 
 This minor release adds model selection to chat and lets operators configure

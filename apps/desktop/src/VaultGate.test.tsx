@@ -65,4 +65,18 @@ describe('Vault gate', () => {
     vi.mocked(vault.vaultStatus).mockResolvedValue(status('locking')); await waitFor(()=>expect(screen.getByText('Private workspace')).not.toBeVisible(),{timeout:1500}); expect(dispose).not.toHaveBeenCalled();
     vi.mocked(vault.vaultStatus).mockResolvedValue(status('locked')); await waitFor(()=>expect(screen.queryByText('Private workspace')).not.toBeInTheDocument(),{timeout:1500}); expect(dispose).toHaveBeenCalledTimes(1);
   });
+  it('keeps the standby workspace hidden and mounted when terminal sessions remain', async () => {
+    let deliver: (next: vault.VaultStatus) => void = () => {};
+    vi.mocked(vault.vaultWatch).mockImplementation(async (callback) => {
+      deliver = callback; return { ...status('unlocked'), terminals: 1, revision: 1 };
+    });
+    render(<VaultGate><div>Terminal buffer</div></VaultGate>);
+    const buffer = await screen.findByText('Terminal buffer');
+    act(() => deliver({ ...status('locked'), terminals: 1, revision: 2 }));
+    expect(buffer).toBeInTheDocument();
+    expect(buffer).not.toBeVisible();
+    act(() => deliver({ ...status('unlocked'), terminals: 1, revision: 3 }));
+    expect(screen.getByText('Terminal buffer')).toBe(buffer);
+    expect(buffer).toBeVisible();
+  });
 });

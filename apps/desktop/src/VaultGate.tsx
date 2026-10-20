@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type FormEven
 import { describeError } from './ipc';
 import { flushVaultViews, vaultAction, vaultActivity, vaultLock, vaultStatus, vaultWatch, vaultFlushComplete, type VaultStatus } from './vault';
 import { SelaiLogo } from './ui/SelaiLogo';
+import { ThemedSelect } from './ui/ThemedSelect';
+import { VaultWorkspacePhase } from './vaultWorkspace';
 import { WindowControls } from './App';
 import './vault.css';
 
@@ -21,6 +23,7 @@ export function VaultGate({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
   const lastActivity = useRef(0);
   const statusRevision = useRef(0);
+  const workspaceOpened = useRef(false);
   const acceptStatus = useCallback((next: VaultStatus) => {
     if (next.revision !== undefined && next.revision < statusRevision.current) return;
     statusRevision.current = next.revision ?? statusRevision.current;
@@ -113,7 +116,7 @@ export function VaultGate({ children }: { children: ReactNode }) {
     finally { setBusy(false); }
   }
   const requestLock = async () => {
-    try { const current = await vaultStatus(); acceptStatus(current); if (current.activeTasks || current.terminals) setLockChoice(true); else await lock(false); }
+    try { const current = await vaultStatus(); acceptStatus(current); if (current.activeTasks) setLockChoice(true); else await lock(false); }
     catch (e) { setError(describeError(e)); }
   };
   useEffect(() => {
@@ -127,12 +130,14 @@ export function VaultGate({ children }: { children: ReactNode }) {
   const recovering=mode==='recover'||mode==='restoreRecovery';
   const unlocked = status?.phase === 'unlocked';
   const locking = status?.phase === 'locking';
+  if (unlocked && !recovery) workspaceOpened.current = true;
+  const standby = status?.phase === 'locked' && status.terminals > 0 && workspaceOpened.current;
   const secretInput = (label: string, value: string, onChange: (value: string) => void, newPhrase = false) => (
     <label>{label}<input aria-label={label} type={show ? 'text' : 'password'} autoComplete={newPhrase ? 'new-password' : 'current-password'} value={value} maxLength={1024} onChange={(e) => onChange(e.target.value)} required minLength={newPhrase ? 12 : undefined} autoCapitalize="none" spellCheck={false} /></label>
   );
   const feedback = <>{error && <p role="alert" className="vault-error">{error}</p>}{notice && <p role="status" className="vault-notice">{notice}</p>}</>;
   return <>
-    {(unlocked || locking) && !recovery && <div hidden={!unlocked} inert={!unlocked} className="vault-workspace">{children}</div>}
+    {(unlocked || locking || standby) && !recovery && <VaultWorkspacePhase.Provider value={unlocked ? 'unlocked' : locking ? 'locking' : 'locked'}><div hidden={!unlocked} inert={!unlocked} className="vault-workspace">{children}</div></VaultWorkspacePhase.Provider>}
     {unlocked && status.cleanupPending && !recovery && <button className="vault-cleanup-banner" onClick={() => setSettings(true)}>Legacy data cleanup needs attention · Open Security</button>}
     {(!unlocked || recovery) && <div className="vault-screen">
       <header className="workspace-head" data-tauri-drag-region><SelaiLogo size={27} /><span data-tauri-drag-region>Selai</span><span className="grow" data-tauri-drag-region /><WindowControls /></header>
@@ -145,10 +150,11 @@ export function VaultGate({ children }: { children: ReactNode }) {
           {feedback}
           <label className="vault-check"><input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />I saved this key somewhere safe.</label>
           <button className="primary" disabled={!saved || busy} onClick={() => { setRecovery(null); setSettings(false); }}>Open workspace</button>
-        </> : locking ? <><h1>Locking your vault</h1><p>The workspace is hidden. Selai is closing terminals and finishing the current command before releasing the encryption key.</p><div className="vault-spinner" role="status" aria-label="Locking" /><p className="muted">{status.activeTasks} active task(s). No new commands will start.</p><button disabled={busy} onClick={() => void lock(true)}>Cancel work and lock now</button><p className="muted">A remote command may continue after disconnection. Check its outcome before retrying.</p>{feedback}</> : <>
+        </> : locking ? <><h1>Locking your vault</h1><p>The workspace is hidden. Terminal sessions stay connected while Selai finishes the current AI command and releases the vault key.</p><div className="vault-spinner" role="status" aria-label="Locking" /><p className="muted">{status.activeTasks} active task(s). No new commands will start.</p><button disabled={busy} onClick={() => void lock(true)}>Cancel work and lock now</button><p className="muted">A cancelled AI command may keep running on the server. Check its outcome before retrying.</p>{feedback}</> : <>
           <h1>{setup ? 'Protect your workspace' : mode === 'recover' ? 'Recover your vault' : mode.startsWith('restore') ? 'Restore an encrypted backup' : 'Unlock Selai'}</h1>
           <p>{setup ? status.legacyFound ? 'Your existing hosts, credentials, chat, and history will be migrated into one encrypted vault. Close all older Selai windows before continuing.' : 'One passphrase protects your hosts, credentials, chat, and history on this computer.' : mode === 'recover' ? 'Use your recovery key to set a new passphrase. A new recovery key will replace the old one.' : mode.startsWith('restore') ? 'Choose a .selai backup after entering its passphrase or recovery key. Restore requires a fresh data directory.' : 'Enter your passphrase to open your workspace.'}</p>
           {mode==='restoreRecovery' && <p>Enter the recovery key saved with this backup and choose a new passphrase.</p>}
+          {status.phase === 'locked' && status.terminals > 0 && mode === 'unlock' && <p className="muted">{status.terminals} terminal session{status.terminals === 1 ? '' : 's'} on standby. Unlock to resume.</p>}
           <form onSubmit={(e: FormEvent) => { e.preventDefault(); void run(setup ? 'setup' : mode); }}>
             {recovering && secretInput('Recovery key', recoveryInput, setRecoveryInput)}
             {secretInput(setup || recovering ? 'New passphrase' : 'Passphrase', phrase, setPhrase, setup || recovering)}
@@ -168,7 +174,7 @@ export function VaultGate({ children }: { children: ReactNode }) {
       </section></main>
     </div>}
     {settings && unlocked && !recovery && <SecuritySettings status={status} close={() => { setSettings(false); setPhrase(''); setConfirm(''); }} refresh={refresh} />}
-    {lockChoice && <div className="vault-modal-backdrop"><section role="dialog" aria-modal="true" aria-labelledby="lock-title" className="vault-card"><h2 id="lock-title">Lock with work in progress?</h2><p>Terminals will disconnect. Selai can let the current agent command finish, or cancel immediately. New commands are blocked in both cases.</p><p className="muted">A remote command may continue after disconnection. Selai will not retry it automatically.</p>{feedback}<div className="vault-actions"><button disabled={busy} onClick={() => void lock(false)}>Finish current command, then lock</button><button disabled={busy} onClick={() => void lock(true)}>Lock now</button><button disabled={busy} onClick={() => setLockChoice(false)}>Keep working</button></div></section></div>}
+    {lockChoice && <div className="vault-modal-backdrop"><section role="dialog" aria-modal="true" aria-labelledby="lock-title" className="vault-card"><h2 id="lock-title">Lock with work in progress?</h2><p>Terminal sessions will stay connected. Selai can finish the current AI command or cancel it immediately. New commands are blocked until you unlock.</p><p className="muted">A cancelled AI command may keep running on the server. Selai will not retry it automatically.</p>{feedback}<div className="vault-actions"><button disabled={busy} onClick={() => void lock(false)}>Finish current command, then lock</button><button disabled={busy} onClick={() => void lock(true)}>Lock now</button><button disabled={busy} onClick={() => setLockChoice(false)}>Keep working</button></div></section></div>}
   </>;
 }
 
@@ -205,8 +211,8 @@ function SecuritySettings({ status, close, refresh }: {status: VaultStatus; clos
   useEffect(() => { void vaultAction('archives').then((result) => { const names = JSON.parse(result || '[]') as string[]; setArchives(names); setArchive(names[0] || ''); }).catch(() => undefined); }, []);
   async function exportArchive() { setBusy(true); setError(null); try { setMessage(await vaultAction('exportArchive', '', archive)); } catch (e) { setError(describeError(e)); } finally { setBusy(false); } }
   return <div className="vault-modal-backdrop"><section role="dialog" aria-modal="true" aria-labelledby="security-title" className="vault-card vault-security"><h2 id="security-title">Vault security</h2>
-    <p>Your database, credentials, private keys, chat, and history are encrypted. Locking disconnects terminals and releases the vault key.</p>
-    <label>Auto-lock after inactivity<select aria-label="Auto-lock timeout" disabled={busy} value={status.timeoutMinutes} onChange={(e) => void act('timeout', Number(e.target.value))}>{[5,15,30,60].map((n) => <option key={n} value={n}>{n} minutes</option>)}</select></label>
+    <p>Your database, credentials, private keys, chat, and history are encrypted. Locking releases the vault key and hides the workspace. Existing terminal sessions stay connected, with input blocked until you unlock. Close their tabs or quit Selai to disconnect.</p>
+    <label>Auto-lock after inactivity<ThemedSelect label="Auto-lock timeout" disabled={busy} value={String(status.timeoutMinutes)} options={[5,15,30,60].map((n) => ({ value: String(n), label: `${n} minutes` }))} onChange={(value) => void act('timeout', Number(value))} /></label>
     <p className="muted">Only your interaction with Selai resets this timer. Terminal output and AI replies do not.</p>
     {storage && <details><summary>Storage</summary>
       <p>Vault: {(storage.databaseBytes / 1048576).toFixed(1)} MiB · Reusable space: {(storage.reclaimableBytes / 1048576).toFixed(1)} MiB</p>
@@ -219,7 +225,7 @@ function SecuritySettings({ status, close, refresh }: {status: VaultStatus; clos
       <div className="vault-actions"><button disabled={busy || !current} onClick={() => void act('backup')}>Save encrypted backup</button><button disabled={busy || !current} onClick={() => void act('rotateRecovery')}>Replace recovery key</button></div>
       <details><summary>Change passphrase</summary><label>New passphrase<input aria-label="New passphrase" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} minLength={12} maxLength={1024} /></label><label>Confirm new passphrase<input aria-label="Confirm new passphrase" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label><button disabled={busy || !current || next.length < 12} onClick={() => void act('change')}>Change passphrase</button></details>
       <details><summary>Decrypt a history export</summary><p>This explicitly saves an unencrypted JSON file. Anyone with access to that file can read it. Enter the passphrase used when the export was created.</p><button disabled={busy || !current} onClick={() => void act('decryptHistory')}>Choose export and save plaintext JSON</button></details>
-      {archives.length > 0 && <details><summary>Migrated history exports ({archives.length})</summary><p>These old exports were moved into your vault. Save an encrypted copy, then use the decrypt option above if you need JSON.</p><select aria-label="Migrated export" value={archive} onChange={(e) => setArchive(e.target.value)}>{archives.map((name) => <option key={name} value={name}>{name}</option>)}</select><button disabled={busy || !archive} onClick={() => void exportArchive()}>Save encrypted copy</button></details>}
+      {archives.length > 0 && <details><summary>Migrated history exports ({archives.length})</summary><p>These old exports were moved into your vault. Save an encrypted copy, then use the decrypt option above if you need JSON.</p><ThemedSelect label="Migrated export" value={archive} options={archives.map((name) => ({ value: name, label: name }))} onChange={setArchive} /><button disabled={busy || !archive} onClick={() => void exportArchive()}>Save encrypted copy</button></details>}
       <p className="muted">Restore a backup from the setup screen on a fresh Selai installation. Keep the backup and recovery key in separate locations.</p>
     </>}
     {error && <p role="alert" className="vault-error">{error}</p>}{message && <p role="status" className="vault-notice">{message}</p>}

@@ -89,6 +89,74 @@ describe('AgentPanel', () => {
     await waitFor(() => expect(screen.queryByText(/Session history could not be saved/)).not.toBeInTheDocument());
   });
 
+  it('browses previous prompts with arrow keys and restores the current draft', async () => {
+    vi.spyOn(ipc, 'providerList').mockResolvedValue({ items: [verified], nextCursor: null });
+    let emit: ((event: ipc.ChatEvent) => void) | undefined;
+    const chat = vi.spyOn(ipc, 'chatSend').mockImplementation(async (_p, _m, onEvent) => {
+      emit = onEvent; return 'chat-task';
+    });
+    render(<AgentPanel />);
+    const textarea = screen.getByLabelText('Request') as HTMLTextAreaElement;
+    for (const text of ['First request', 'Second request']) {
+      fireEvent.change(textarea, { target: { value: text } });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() => expect(chat).toHaveBeenCalledWith('p1', expect.any(Array), expect.any(Function), 'qwen-tools'));
+      act(() => emit?.({ type: 'completed' }));
+    }
+    const draft = 'Unfinished draft\nsecond line';
+    fireEvent.change(textarea, { target: { value: draft } });
+    textarea.setSelectionRange(draft.length, draft.length);
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    expect(textarea).toHaveValue(draft);
+    textarea.setSelectionRange(0, 0);
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    expect(textarea).toHaveValue('Second request');
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    expect(textarea).toHaveValue('First request');
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    expect(textarea).toHaveValue('First request');
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    expect(textarea).toHaveValue('Second request');
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    expect(textarea).toHaveValue(draft);
+    expect(chat).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'New session' }));
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    expect(textarea).toHaveValue('');
+  });
+
+  it('restores server mentions with a recalled prompt without executing it', async () => {
+    const agent = mockAgent();
+    const textarea = await pickProductionWeb();
+    await sendRequest(textarea, 'check disk usage');
+    await waitFor(() => expect(agent.start).toHaveBeenCalledOnce());
+    agent.play({ taskId: 't1', type: 'completed', text: '' });
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    expect(textarea).toHaveValue('@production-web check disk usage');
+    expect(screen.getByLabelText('Remove production-web')).toBeInTheDocument();
+    expect(agent.start).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(agent.start).toHaveBeenCalledTimes(2));
+    expect(agent.start.mock.calls[1]?.slice(0, 3)).toEqual(['h1', 'p1', 'check disk usage']);
+  });
+
+  it('requires unavailable recalled server mentions to be removed or reselected', async () => {
+    const agent = mockAgent();
+    const textarea = await pickProductionWeb();
+    await sendRequest(textarea, 'check disk usage');
+    await waitFor(() => expect(agent.start).toHaveBeenCalledOnce());
+    agent.play({ taskId: 't1', type: 'completed', text: '' });
+    vi.mocked(ipc.hostList).mockResolvedValue({ items: [], nextCursor: null });
+    await act(async () => { window.dispatchEvent(new Event(ipc.HOSTS_CHANGED)); });
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    expect(await screen.findByText(/A server from this message is unavailable/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    fireEvent.change(textarea, { target: { value: 'check disk usage' } });
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+    expect(agent.start).toHaveBeenCalledOnce();
+  });
+
   it('saves a titled conversation and restores it with context after reopening', async () => {
     vi.spyOn(ipc, 'providerList').mockResolvedValue({ items: [verified], nextCursor: null });
     let emit: ((event: ipc.ChatEvent) => void) | undefined;
@@ -314,10 +382,10 @@ describe('AgentPanel', () => {
     vi.spyOn(ipc, 'providerModels').mockResolvedValue({ models: ['qwen-tools', 'qwen-chat'], latencyMs: 12 });
     const chat = vi.spyOn(ipc, 'chatSend').mockResolvedValue('c1');
     render(<AgentPanel />);
-    const model = await screen.findByLabelText('Model');
-    await waitFor(() => expect(model).toHaveValue('qwen-tools'));
-    expect(screen.getByRole('option', { name: 'qwen-chat' })).toBeInTheDocument();
-    fireEvent.change(model, { target: { value: 'qwen-chat' } });
+    const model = await screen.findByRole('combobox', { name: 'Model' });
+    await waitFor(() => expect(model).toHaveAttribute('aria-valuetext', 'qwen-tools'));
+    fireEvent.click(model);
+    fireEvent.click(screen.getByRole('option', { name: 'qwen-chat' }));
     fireEvent.change(screen.getByLabelText('Request'), { target: { value: 'Explain SSH multiplexing' } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -326,8 +394,14 @@ describe('AgentPanel', () => {
     ));
   });
 
-  it('a host task shows each command as one quiet line, not its output', async () => {
+  it('a host task shows each command with its collapsible output', async () => {
     const agent = mockAgent();
+    vi.spyOn(ipc, 'taskTimeline').mockResolvedValue([{
+      id: 'e1', taskId: 't1', hostId: 'h1', modelId: 'qwen-tools', tool: 'ssh.run_diagnostic',
+      commandRedacted: 'df -hP', commandSha256: 'digest', state: 'completed', policyDecision: null,
+      exitCode: 0, errorCode: null, stdoutPreview: 'Filesystem Size Used', stderrPreview: null,
+      outputTruncated: false, createdAtMs: 1, startedAtMs: 1, finishedAtMs: 2,
+    }]);
     const textarea = await pickProductionWeb();
     await sendRequest(textarea, 'check disk usage');
     await waitFor(() => expect(agent.start).toHaveBeenCalled());
@@ -335,6 +409,10 @@ describe('AgentPanel', () => {
     agent.play({ taskId: 't1', type: 'toolFinished', executionId: 'e1', state: 'completed', exitCode: 0, errorCode: null });
     const line = await screen.findByLabelText('Command');
     expect(line).toHaveTextContent('Randf -hPexit 0');
+    const output = await screen.findByText('Filesystem Size Used');
+    expect(output.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByText('Output'));
+    expect(output.closest('details')).toHaveAttribute('open');
     // The mention applied to that message only.
     expect(screen.queryByLabelText('Remove production-web')).not.toBeInTheDocument();
   });
@@ -378,6 +456,12 @@ describe('AgentPanel', () => {
 
   it('shows the exact command and sends the operator decision for an approval', async () => {
     const agent = mockAgent();
+    vi.spyOn(ipc, 'taskTimeline').mockResolvedValue([{
+      id: 'e1', taskId: 't1', hostId: 'h1', modelId: 'qwen-tools', tool: 'ssh.run_command',
+      commandRedacted: 'systemctl restart nginx', commandSha256: 'digest', state: 'completed', policyDecision: null,
+      exitCode: 0, errorCode: null, stdoutPreview: 'service restarted', stderrPreview: null,
+      outputTruncated: false, createdAtMs: 1, startedAtMs: 1, finishedAtMs: 2,
+    }]);
     const decide = vi.spyOn(ipc, 'approvalDecide').mockResolvedValue(undefined);
     const textarea = await pickProductionWeb();
     await sendRequest(textarea, 'free text');
@@ -393,6 +477,10 @@ describe('AgentPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(decide).toHaveBeenCalledWith('a1', true, undefined, false));
     expect(await screen.findByText('Approved. Waiting for the result.')).toBeInTheDocument();
+    agent.play({ taskId: 't1', type: 'toolFinished', executionId: 'e1', state: 'completed', exitCode: 0, errorCode: null });
+    const output = await screen.findByText('service restarted');
+    expect(card).toContainElement(output);
+    expect(output.closest('details')).not.toHaveAttribute('open');
   });
 
   it('shows why the database refused a decision', async () => {
@@ -447,16 +535,16 @@ describe('AgentPanel', () => {
       .mockResolvedValueOnce({ items: [], nextCursor: null })
       .mockResolvedValue({ items: [verified], nextCursor: null });
     render(<AgentPanel />);
-    expect(await screen.findByRole('option', { name: 'No providers' })).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Provider' })).toHaveTextContent('No providers');
 
     act(() => {
       window.dispatchEvent(new Event(PROVIDERS_CHANGED));
     });
 
-    expect(await screen.findByRole('option', { name: /local-vllm/ })).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Provider' })).toHaveTextContent('local-vllm');
     expect(list).toHaveBeenCalledTimes(2);
     // The shown choice must be the selected one, so Send can be enabled.
-    expect(screen.getByLabelText('Provider')).toHaveValue('p1');
+    expect(screen.getByRole('combobox', { name: 'Provider' })).toHaveAttribute('aria-valuetext', 'local-vllm');
     expect(screen.queryByText(/No verified provider/)).not.toBeInTheDocument();
   });
 

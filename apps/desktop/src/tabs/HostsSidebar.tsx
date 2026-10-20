@@ -20,6 +20,14 @@ interface Props {
 }
 
 const HOST_DRAG_TYPE = 'application/x-selai-host-id';
+const COLLAPSED_GROUPS_KEY = 'selai.hosts.collapsed-groups';
+
+function storedCollapsedGroups(): Set<string> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(COLLAPSED_GROUPS_KEY) ?? '[]');
+    return new Set(Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []);
+  } catch { return new Set(); }
+}
 
 /** The host explorer in the left sidebar: this computer and the saved SSH hosts. */
 export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKeys, onManageProxies, profilePaused }: Props) {
@@ -30,7 +38,7 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [moveNote, setMoveNote] = useState<string | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(storedCollapsedGroups);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<HostView | 'new' | null>(null);
   const [importing, setImporting] = useState(false);
@@ -38,6 +46,10 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
   const [loaded, setLoaded] = useState(false);
   const [local, setLocal] = useState<HostView | null>(null);
   const [open, setOpen] = useState({ local: true, ssh: true });
+
+  useEffect(() => {
+    try { localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...collapsedGroups])); } catch { /* storage can be unavailable */ }
+  }, [collapsedGroups]);
 
   useEffect(() => {
     let active = true;

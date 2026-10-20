@@ -1,13 +1,13 @@
 // Turns the task's event stream into the transcript the operator reads. Pure:
 // the Rust core decides what happens; this only arranges what is shown.
-import type { SudoNeed, TaskEvent } from '../ipc';
+import type { ExecutionView, SudoNeed, TaskEvent } from '../ipc';
 
 export type ApprovalState = 'pending' | 'sending' | 'approved' | 'denied';
 
 export type TranscriptItem =
   | { kind: 'text'; text: string }
   | { kind: 'status'; text: string }
-  | { kind: 'tool'; executionId: string; command: string; hostLabel: string; status: string; exitCode: number | null }
+  | { kind: 'tool'; executionId: string; command: string; hostLabel: string; status: string; exitCode: number | null; stdoutPreview?: string | null; stderrPreview?: string | null; outputTruncated?: boolean }
   | {
       kind: 'approval';
       approvalId: string;
@@ -97,6 +97,12 @@ export function setApprovalState(
   return items.map((item) =>
     item.kind === 'approval' && item.approvalId === approvalId ? { ...item, state, error } : item,
   );
+}
+
+export function setExecutionOutput(items: TranscriptItem[], execution: ExecutionView): TranscriptItem[] {
+  return items.map((item) => item.kind === 'tool' && item.executionId === execution.id
+    ? { ...item, stdoutPreview: execution.stdoutPreview, stderrPreview: execution.stderrPreview, outputTruncated: execution.outputTruncated }
+    : item);
 }
 
 function stateText(state: string, errorCode: string | null): string {

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AgentPanel } from './tabs/AgentPanel';
@@ -10,7 +10,9 @@ import type { SessionStatus, TerminalSessionTab } from './tabs/TerminalTab';
 import { ClockIcon, CloseIcon, KeyIcon, MaximizeIcon, MinimizeIcon, PlugIcon, PlusIcon, ServerIcon, TerminalIcon, FilesIcon, ForwardIcon, ProxyIcon } from './ui/icons';
 import { SelaiLogo } from './ui/SelaiLogo';
 import { VaultGate } from './VaultGate';
-import { useResolvedTheme, type Theme } from './theme';
+import { VaultWorkspacePhase } from './vaultWorkspace';
+import { applyTheme, readThemePreference, THEME_KEY, THEME_OPTIONS, useResolvedTheme, type Theme } from './theme';
+import { ThemedSelect } from './ui/ThemedSelect';
 
 // xterm.js is large; load it only when a terminal is first needed.
 const TerminalStack = lazy(() => import('./tabs/TerminalTab').then((m) => ({ default: m.TerminalStack })));
@@ -28,8 +30,6 @@ const PAGE_TITLES: Record<PageId, string> = { history: 'History', providers: 'Pr
 
 let nextTabNumber = 0;
 
-const THEMES: Theme[] = ['dark', 'light', 'system'];
-const THEME_KEY = 'selai.theme';
 const TERMINAL_FONT_KEY = 'selai.terminal.fontSize';
 const MIN_TERMINAL_FONT = 9;
 const MAX_TERMINAL_FONT = 24;
@@ -49,11 +49,6 @@ function store(key: string, value: string) {
   } catch {
     // Not saved; the choice still applies until the app closes.
   }
-}
-
-function storedTheme(): Theme {
-  const value = stored(THEME_KEY);
-  return THEMES.includes(value as Theme) ? (value as Theme) : 'dark';
 }
 
 function storedTerminalFontSize(): number {
@@ -141,6 +136,8 @@ function Resizer({
 export function App() { return <VaultGate><Workbench /></VaultGate>; }
 
 export function Workbench() {
+  const vaultPhase = useContext(VaultWorkspacePhase);
+  const workspaceAvailable = vaultPhase !== 'locked';
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [storage, setStorage] = useState<{ ok: boolean; text: string }>({ ok: true, text: 'Checking database…' });
   const [tabs, setTabs] = useState<EditorTab[]>([]);
@@ -153,7 +150,7 @@ export function Workbench() {
   const statusRef = useRef<Record<string, SessionStatus>>({});
   const [editRequest, setEditRequest] = useState<{ hostId: string; n: number } | null>(null);
   const [profilePaused, setProfilePaused] = useState(false);
-  const [theme, setTheme] = useState<Theme>(storedTheme);
+  const [theme, setTheme] = useState<Theme>(readThemePreference);
   const terminalTheme = useResolvedTheme(theme);
   const [terminalFontSize, setTerminalFontSize] = useState(storedTerminalFontSize);
   const [sidebarOpen, setSidebarOpen] = useState(() => stored('selai.sidebar') !== 'closed');
@@ -173,9 +170,7 @@ export function Workbench() {
   const chatWidth = Math.min(chat.width, maxChatWidth);
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'system') delete root.dataset.theme;
-    else root.dataset.theme = theme;
+    applyTheme(theme);
     store(THEME_KEY, theme);
   }, [theme]);
 
@@ -190,6 +185,7 @@ export function Workbench() {
   // belong to the shell, so these use Shift.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (vaultPhase !== 'unlocked') return;
       if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key === 'e') {
@@ -203,7 +199,7 @@ export function Workbench() {
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, []);
+  }, [vaultPhase]);
 
   useEffect(() => {
     let active = true;
@@ -369,12 +365,12 @@ export function Workbench() {
         </nav>
 
         <aside className="sidebar" hidden={!sidebarOpen} style={{ width: side.width }}>
-          <HostsSidebar onConnect={openTerminal} sessions={sessions} editRequest={editRequest}
+          {workspaceAvailable && <HostsSidebar onConnect={openTerminal} sessions={sessions} editRequest={editRequest}
             onManageProxies={() => { setProfilePaused(true); openPage('proxies'); if (window.innerWidth <= 1100) setChatOpen(false); }}
             profilePaused={profilePaused} onManageKeys={() => {
               setProfilePaused(true); openPage('keys');
               if (window.innerWidth <= 1100) setChatOpen(false);
-            }} />
+            }} />}
         </aside>
         {sidebarOpen && <Resizer label="Resize sidebar" direction={1} {...side} />}
 
@@ -430,7 +426,7 @@ export function Workbench() {
                   theme={terminalTheme}
                   tabs={terminals}
                   activeKey={activeKey}
-                  visible={active?.kind === 'terminal'}
+                  visible={vaultPhase === 'unlocked' && active?.kind === 'terminal'}
                   onClose={closeTab}
                   onStatus={onStatus}
                   onEditHost={editHost}
@@ -439,17 +435,17 @@ export function Workbench() {
                 />
               </Suspense>
             )}
-            {tabs.some((t) => t.kind === 'history') && (
+            {workspaceAvailable && tabs.some((t) => t.kind === 'history') && (
               <div className="editor-page" hidden={active?.kind !== 'history'}>
                 <HistoryTab visible={active?.kind === 'history'} />
               </div>
             )}
-            {tabs.some((t) => t.kind === 'providers') && (
+            {workspaceAvailable && tabs.some((t) => t.kind === 'providers') && (
               <div className="editor-page" hidden={active?.kind !== 'providers'}>
                 <ProvidersPanel />
               </div>
             )}
-            {tabs.some((t) => t.kind === 'keys') && (
+            {workspaceAvailable && tabs.some((t) => t.kind === 'keys') && (
               <div className="editor-page" hidden={active?.kind !== 'keys'}>
                 <Suspense fallback={<div className="welcome"><span className="spinner spinner-lg" /></div>}>
                   <SshKeysPage visible={active?.kind === 'keys'} onReturnToProfile={profilePaused ? () => {
@@ -458,7 +454,7 @@ export function Workbench() {
                 </Suspense>
               </div>
             )}
-            {(['sftp', 'forwarding', 'proxies'] as const).filter((page) => tabs.some((t) => t.kind === page)).map((page) => <div className="editor-page" key={page} hidden={active?.kind !== page}><Suspense fallback={<div className="welcome"><span className="spinner spinner-lg" /></div>}>
+            {workspaceAvailable && (['sftp', 'forwarding', 'proxies'] as const).filter((page) => tabs.some((t) => t.kind === page)).map((page) => <div className="editor-page" key={page} hidden={active?.kind !== page}><Suspense fallback={<div className="welcome"><span className="spinner spinner-lg" /></div>}>
               {page === 'sftp' ? <SftpPage visible={active?.kind === page} /> : page === 'forwarding' ? <ForwardingPage visible={active?.kind === page} /> : <ProxiesPage visible={active?.kind === page} onReturnToProfile={profilePaused ? () => { setProfilePaused(false); setSidebarOpen(true); } : undefined} />}
             </Suspense></div>)}
           </div>
@@ -466,7 +462,7 @@ export function Workbench() {
 
         {chatOpen && <Resizer label="Resize chat" direction={-1} width={chatWidth} setWidth={(value) => chat.setWidth(Math.min(value, maxChatWidth))} commit={chat.commit} />}
         <aside id="assistant-panel" className="chatbar" hidden={!chatOpen} style={{ width: chatWidth }}>
-          <AgentPanel
+          {workspaceAvailable && <AgentPanel
             activeHost={focusedTerminal?.host ?? null}
             onOpenProviders={() => {
               openPage('providers');
@@ -477,7 +473,7 @@ export function Workbench() {
               if (window.innerWidth <= 1100) setChatOpen(false);
             }}
             onClose={() => setChatOpen(false)}
-          />
+          />}
         </aside>
       </div>
 
@@ -493,13 +489,8 @@ export function Workbench() {
           </span>
         )}
         <span className="grow" />
-        <button
-          type="button"
-          className="status-item status-btn"
-          onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length] ?? 'dark')}
-        >
-          Theme: {theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'}
-        </button>
+        <span className="status-item">Theme</span>
+        <ThemedSelect label="Theme" className="theme-choice" value={theme} options={THEME_OPTIONS} onChange={(value) => setTheme(value as Theme)} />
         <span className="status-item">{info ? `Selai ${info.version}` : ''}</span>
       </footer>
     </div>

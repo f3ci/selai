@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Workbench as App } from './App';
 import * as ipc from './ipc';
+import { chooseSelectValue } from './ui/selectTestUtils';
+import { VaultWorkspacePhase } from './vaultWorkspace';
 
 const windowApi = vi.hoisted(() => ({
   isTauri: vi.fn(() => false),
@@ -120,9 +122,9 @@ describe('App shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to SSH profile' }));
     expect(screen.getByLabelText('Label')).toHaveValue('Draft production');
     expect(screen.getByLabelText('Host name or IP')).toHaveValue('example.test');
-    await screen.findByRole('option', { name: 'Work key · ssh-ed25519' });
-    fireEvent.change(screen.getByLabelText('SSH key'), { target: { value: 'vault://key:work' } });
-    expect(screen.getByLabelText('SSH key')).toHaveValue('vault://key:work');
+    await screen.findByRole('combobox', { name: 'SSH key' });
+    chooseSelectValue('SSH key', 'vault://key:work');
+    expect(screen.getByRole('combobox', { name: 'SSH key' })).toHaveAttribute('aria-valuetext', 'Work key · ssh-ed25519');
   });
 
   it('keeps a compact window clear and opens Providers from the assistant', async () => {
@@ -201,6 +203,19 @@ describe('App shell', () => {
     expect(within(tabs).getAllByRole('tab')).toHaveLength(1);
   });
 
+  it('selects and remembers Catppuccin from the theme menu', async () => {
+    const first = render(<App />);
+    chooseSelectValue('Theme', 'catppuccin-macchiato');
+    expect(document.documentElement.dataset.theme).toBe('catppuccin-macchiato');
+    expect(localStorage.getItem('selai.theme')).toBe('catppuccin-macchiato');
+    first.unmount();
+    render(<App />);
+    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveAttribute('aria-valuetext', 'Catppuccin Macchiato');
+    chooseSelectValue('Theme', 'dark');
+    expect(document.documentElement.style.getPropertyValue('--bg')).toBe('');
+    expect(localStorage.getItem('selai.theme')).toBe('dark');
+  });
+
   it('removes both terminal tabs when their shells exit in the same event batch', async () => {
     const host = { id: 'h1', label: 'Production Web', hostname: 'example.test', username: 'ops', port: 22 } as ipc.HostView;
     vi.spyOn(ipc, 'hostList').mockResolvedValue({ items: [host], nextCursor: null });
@@ -217,5 +232,25 @@ describe('App shell', () => {
     act(() => { for (const onEvent of events) onEvent({ type: 'exit', status: 0 }); });
     await waitFor(() => expect(screen.queryByRole('tab')).not.toBeInTheDocument());
     expect(screen.getByText('Ready when you are.')).toBeInTheDocument();
+  });
+  it('preserves terminal tabs across vault lock while removing forms and chat', async () => {
+    const host = { id: 'h1', label: 'Production Web', hostname: 'example.test', username: 'ops', port: 22 } as ipc.HostView;
+    vi.spyOn(ipc, 'hostList').mockResolvedValue({ items: [host], nextCursor: null });
+    const connect = vi.spyOn(ipc, 'terminalConnect').mockResolvedValue('standby-session');
+    const disconnect = vi.spyOn(ipc, 'terminalDisconnect').mockResolvedValue();
+    const { rerender } = render(<VaultWorkspacePhase.Provider value="unlocked"><App /></VaultWorkspacePhase.Provider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect to Production Web' }));
+    await screen.findByText('Connected');
+    fireEvent.click(screen.getAllByRole('button', { name: 'New host' })[0]!);
+    expect(screen.getByLabelText('Host name or IP')).toBeInTheDocument();
+    rerender(<VaultWorkspacePhase.Provider value="locked"><App /></VaultWorkspacePhase.Provider>);
+    expect(screen.queryByLabelText('Host name or IP')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Request')).not.toBeInTheDocument();
+    expect(screen.getByText('Connected')).not.toBeVisible();
+    expect(disconnect).not.toHaveBeenCalled();
+    rerender(<VaultWorkspacePhase.Provider value="unlocked"><App /></VaultWorkspacePhase.Provider>);
+    expect(screen.getByText('Connected')).toBeVisible();
+    expect(connect).toHaveBeenCalledOnce();
+    expect(disconnect).not.toHaveBeenCalled();
   });
 });

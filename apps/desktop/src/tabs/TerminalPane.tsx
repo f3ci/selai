@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
@@ -19,7 +19,9 @@ import {
 import { HostKeyDialog } from '../ui/HostKeyDialog';
 import { AlertIcon, EditIcon, RefreshIcon } from '../ui/icons';
 import type { SessionStatus } from './TerminalTab';
-import type { ResolvedTheme } from '../theme';
+import { isLightTheme, type ResolvedTheme } from '../theme';
+import { terminalTheme } from '../terminalTheme';
+import { VaultWorkspacePhase } from '../vaultWorkspace';
 
 interface Props {
   theme?: ResolvedTheme;
@@ -31,39 +33,6 @@ interface Props {
   fontSize?: number;
   onFontSizeChange?: (step: number) => void;
 }
-
-const DARK_THEME = {
-  background: '#141618',
-  foreground: '#d8dbe8',
-  cursor: '#a8c7b8',
-  cursorAccent: '#141618',
-  selectionBackground: 'rgba(168, 199, 184, 0.25)',
-  black: '#1c2031',
-  red: '#ef6b6b',
-  green: '#3fcf86',
-  yellow: '#f0b84a',
-  blue: '#6b8cff',
-  magenta: '#b58cff',
-  cyan: '#3cc8dc',
-  white: '#d8dbe8',
-  brightBlack: '#5d6380',
-  brightRed: '#ff8a8a',
-  brightGreen: '#6be3a4',
-  brightYellow: '#ffd27a',
-  brightBlue: '#93acff',
-  brightMagenta: '#cfb0ff',
-  brightCyan: '#7adcea',
-  brightWhite: '#ffffff',
-};
-
-const LIGHT_THEME = {
-  background: '#fafaf8', foreground: '#333b35', cursor: '#38634f', cursorAccent: '#fafaf8',
-  selectionBackground: 'rgba(56, 99, 79, 0.22)',
-  black: '#26302a', red: '#a62e2a', green: '#246b3d', yellow: '#806000',
-  blue: '#245cb0', magenta: '#813e9f', cyan: '#006c7a', white: '#58665d',
-  brightBlack: '#65736a', brightRed: '#b23730', brightGreen: '#28713e', brightYellow: '#866000',
-  brightBlue: '#295cc1', brightMagenta: '#853ba8', brightCyan: '#007080', brightWhite: '#1b241e',
-};
 
 const FAILURE_TITLES: Record<string, string> = {
   SSH_AUTH_FAILED: 'Authentication failed',
@@ -81,6 +50,10 @@ const FAILURE_TITLES: Record<string, string> = {
  * connects again; nothing is sent to the server before the key is trusted.
  */
 export function TerminalPane({ host, hidden, onStatus, onClose, onEditHost, fontSize = 13.5, onFontSizeChange, theme = 'dark' }: Props) {
+  const vaultPhase = useContext(VaultWorkspacePhase);
+  const phaseRef = useRef(vaultPhase);
+  phaseRef.current = vaultPhase;
+  const resumeOutput = useRef<(() => void) | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -114,8 +87,8 @@ export function TerminalPane({ host, hidden, onStatus, onClose, onEditHost, font
       fontSize: initialFontSize.current,
       lineHeight: 1.25,
       letterSpacing: 0,
-      theme: initialTheme.current === 'light' ? LIGHT_THEME : DARK_THEME,
-      minimumContrastRatio: initialTheme.current === 'light' ? 4.5 : 1,
+      theme: terminalTheme(initialTheme.current),
+      minimumContrastRatio: isLightTheme(initialTheme.current) ? 4.5 : 1,
       allowProposedApi: false,
     });
     const fit = new FitAddon();
@@ -127,11 +100,11 @@ export function TerminalPane({ host, hidden, onStatus, onClose, onEditHost, font
 
     const inputSub = term.onData((data) => {
       const id = sessionRef.current;
-      if (id) void terminalInput(id, data).catch(() => undefined);
+      if (id && phaseRef.current === 'unlocked') void terminalInput(id, data).catch(() => undefined);
     });
     const resizeSub = term.onResize(({ cols, rows }) => {
       const id = sessionRef.current;
-      if (id) void terminalResize(id, cols, rows).catch(() => undefined);
+      if (id && phaseRef.current === 'unlocked') void terminalResize(id, cols, rows).catch(() => undefined);
     });
     const observer =
       typeof ResizeObserver === 'undefined'
@@ -153,8 +126,8 @@ export function TerminalPane({ host, hidden, onStatus, onClose, onEditHost, font
 
   useEffect(() => {
     if (termRef.current) {
-      termRef.current.options.theme = theme === 'light' ? LIGHT_THEME : DARK_THEME;
-      termRef.current.options.minimumContrastRatio = theme === 'light' ? 4.5 : 1;
+      termRef.current.options.theme = terminalTheme(theme);
+      termRef.current.options.minimumContrastRatio = isLightTheme(theme) ? 4.5 : 1;
     }
   }, [theme]);
 
@@ -176,6 +149,7 @@ export function TerminalPane({ host, hidden, onStatus, onClose, onEditHost, font
     let closeSent = false;
     let sessionId: string | null = null;
     let pendingAck = 0;
+    const standbyOutput: Uint8Array[] = [];
     let ackTimer: number | null = null;
     const acknowledge = () => {
       if (ackTimer !== null) window.clearTimeout(ackTimer);
@@ -213,21 +187,32 @@ export function TerminalPane({ host, hidden, onStatus, onClose, onEditHost, font
       closeFinished();
     };
 
+    const writeOutput = (bytes: Uint8Array) => {
+      pendingWrites += 1;
+      term.write(bytes, () => {
+        pendingWrites -= 1;
+        if (disposed) return;
+        if (ended) { closeFinished(); return; }
+        pendingAck += bytes.length;
+        if (pendingAck >= 32 * 1024) acknowledge();
+        else if (ackTimer === null) ackTimer = window.setTimeout(acknowledge, 8);
+      });
+    };
+    resumeOutput.current = () => {
+      if (disposed || ended) return;
+      for (const bytes of standbyOutput.splice(0)) writeOutput(bytes);
+    };
+
     const onEvent = (event: TerminalEvent) => {
       if (disposed || ended) return;
       switch (event.type) {
         case 'data':
           {
             const bytes = decodeBase64(event.data);
-            pendingWrites += 1;
-            term.write(bytes, () => {
-              pendingWrites -= 1;
-              if (disposed) return;
-              if (ended) { closeFinished(); return; }
-              pendingAck += bytes.length;
-              if (pendingAck >= 32 * 1024) acknowledge();
-              else if (ackTimer === null) ackTimer = window.setTimeout(acknowledge, 8);
-            });
+            // Credits bound this queue to the backend's output window. Defer
+            // parsing while locked so terminal protocol replies wait for unlock.
+            if (phaseRef.current !== 'unlocked') standbyOutput.push(bytes);
+            else writeOutput(bytes);
           }
           break;
         case 'exit':
@@ -269,11 +254,16 @@ export function TerminalPane({ host, hidden, onStatus, onClose, onEditHost, font
 
     return () => {
       disposed = true;
+      resumeOutput.current = null;
       if (ackTimer !== null) window.clearTimeout(ackTimer);
       if (sessionId) void terminalDisconnect(sessionId).catch(() => undefined);
       sessionRef.current = null;
     };
   }, [host.id, attempt]);
+
+  useEffect(() => {
+    if (vaultPhase === 'unlocked') resumeOutput.current?.();
+  }, [vaultPhase]);
 
   // A pane that was hidden has no size; fit it again when it is shown.
   useEffect(() => {

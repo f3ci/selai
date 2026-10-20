@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as ipc from '../ipc';
 import { ProvidersPanel } from './ProvidersPanel';
+import { chooseSelectValue } from '../ui/selectTestUtils';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -109,7 +110,7 @@ describe('ProvidersPanel', () => {
     const save = vi.spyOn(ipc, 'providerSave').mockResolvedValue(provider);
     render(<ProvidersPanel />);
     fireEvent.click((await screen.findAllByRole('button', { name: 'Add provider' }))[0]!);
-    fireEvent.change(screen.getByLabelText('Start from a template'), { target: { value: 'vllm' } });
+    chooseSelectValue('Provider template', 'vllm');
     expect(screen.getByLabelText('Base URL')).toHaveValue('http://localhost:8000/v1');
     expect(screen.queryByLabelText('Model ID')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/API key/), { target: { value: 'k-1' } });

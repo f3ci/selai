@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   chatSessionGet,
   chatSessionList,
@@ -27,6 +27,7 @@ import { collectPages } from '../ui/collectPages';
 import { Drawer } from '../ui/Overlay';
 import { ChevronIcon, ClockIcon, RefreshIcon, SearchIcon, TerminalIcon } from '../ui/icons';
 import { SelaiLogo } from '../ui/SelaiLogo';
+import { ThemedSelect } from '../ui/ThemedSelect';
 import { restoreTranscript, type ChatTurn } from './useChatSessions';
 
 const STATES = ['completed', 'failed', 'denied', 'cancelled', 'interrupted', 'timed_out'] as const;
@@ -61,6 +62,7 @@ export function HistoryTab({ visible }: { visible: boolean }) {
   const [selected, setSelected] = useState<ChatSessionSummary | null>(null);
   const [byHost, setByHost] = useState(false);
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<'latest' | 'oldest'>('latest');
   const [limit, setLimit] = useState(30);
   const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -94,7 +96,10 @@ export function HistoryTab({ visible }: { visible: boolean }) {
     }} />
   );
 
-  const matching = sessions.filter((session) => session.title.toLowerCase().includes(query.trim().toLowerCase()));
+  const matching = sessions
+    .filter((session) => session.title.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((a, b) => (sort === 'latest' ? -1 : 1)
+      * (a.updatedAtMs - b.updatedAtMs || a.id.localeCompare(b.id)));
   return (
     <section aria-label="Session history" className="page history-page">
       <header className="page-head">
@@ -104,13 +109,17 @@ export function HistoryTab({ visible }: { visible: boolean }) {
         </div>
         <button type="button" className="btn btn-sm" onClick={() => setByHost(true)}>Browse by host</button>
       </header>
-      <div className="view-bar">
+      <div className="view-bar session-history-toolbar">
         <label className="session-history-search">
           <SearchIcon size={15} />
           <input type="search" aria-label="Search sessions" placeholder="Search sessions by title" value={query}
             onChange={(event) => { setQuery(event.target.value); setLimit(30); }} />
         </label>
         <span className="grow" />
+        <ThemedSelect label="Sort sessions by" value={sort} options={[
+          { value: 'latest', label: 'Latest activity' },
+          { value: 'oldest', label: 'Oldest activity' },
+        ]} onChange={(value) => { setSort(value as 'latest' | 'oldest'); setLimit(30); }} />
         <span className="muted">{matching.length} session{matching.length === 1 ? '' : 's'}</span>
         <button type="button" className="icon-btn" aria-label="Refresh sessions" title="Refresh sessions"
           disabled={loading} onClick={() => setRefresh((value) => value + 1)}><RefreshIcon size={15} /></button>
@@ -133,7 +142,10 @@ export function HistoryTab({ visible }: { visible: boolean }) {
           </li>
         ))}
       </ul>
-      {matching.length > limit && <button type="button" className="btn" onClick={() => setLimit((value) => value + 30)}>Load more sessions</button>}
+      {matching.length > limit && <div className="history-pagination">
+        <button type="button" className="btn" onClick={() => setLimit((value) => value + 30)}>Load more sessions</button>
+        <button type="button" className="btn btn-ghost" onClick={() => setLimit(matching.length)}>Load all sessions</button>
+      </div>}
     </section>
   );
 }
@@ -145,6 +157,8 @@ function SessionHistory({ session, visible, onBack }: { session: ChatSessionSumm
   const [record, setRecord] = useState(session);
   const [turns, setTurns] = useState<ChatTurn[] | null>(null);
   const [limit, setLimit] = useState(REQUESTS_PER_PAGE);
+  const [sort, setSort] = useState<'latest' | 'oldest'>('latest');
+  const orderedTurns = useMemo(() => turns && (sort === 'latest' ? [...turns].reverse() : turns), [turns, sort]);
   const [results, setResults] = useState<Record<string, CommandResult>>({});
   const cache = useRef(new Map<string, CommandResult>());
   const transcriptReady = useRef(false);
@@ -184,11 +198,11 @@ function SessionHistory({ session, visible, onBack }: { session: ChatSessionSumm
   }, [visible, session.id, refresh]);
 
   useEffect(() => {
-    if (!visible || !turns || !transcriptReady.current) return;
+    if (!visible || !orderedTurns || !transcriptReady.current) return;
     let active = true;
-    const ids = [...new Set(turns.slice(0, limit).flatMap((turn) => turn.taskId ? [turn.taskId] : []))]
+    const ids = [...new Set(orderedTurns.slice(0, limit).flatMap((turn) => turn.taskId ? [turn.taskId] : []))]
       .filter((id) => !cache.current.has(id));
-    // Bound IPC concurrency and render only one page of requests at a time.
+    // Keep IPC concurrency bounded, including when loading every request.
     void (async () => {
       for (let offset = 0; offset < ids.length && active; offset += 4) {
         const batch = await Promise.all(ids.slice(offset, offset + 4).map(async (id): Promise<[string, CommandResult]> => {
@@ -201,9 +215,9 @@ function SessionHistory({ session, visible, onBack }: { session: ChatSessionSumm
       }
     })();
     return () => { active = false; };
-  }, [visible, turns, limit, retry]);
+  }, [visible, orderedTurns, limit, retry]);
 
-  const shown = turns?.slice(0, limit) ?? [];
+  const shown = orderedTurns?.slice(0, limit) ?? [];
   const commands = Object.values(results).flatMap((result) => result.rows ?? []);
   const pending = shown.some((turn) => turn.taskId && !results[turn.taskId]);
   const hosts = new Set(turns?.flatMap((turn) => turn.hostId ? [turn.hostId] : []) ?? []);
@@ -227,7 +241,13 @@ function SessionHistory({ session, visible, onBack }: { session: ChatSessionSumm
           <span>{turns.length} request{turns.length === 1 ? '' : 's'}</span><span>{hosts.size} server{hosts.size === 1 ? '' : 's'}</span>
           <span>{commands.length} command{commands.length === 1 ? '' : 's'} loaded</span>
         </div>
-        <h2 className="session-commands-title">Command history</h2>
+        <div className="session-commands-toolbar">
+          <h2 className="session-commands-title">Command history</h2>
+          <ThemedSelect label="Sort by" value={sort} disabled={pending} options={[
+            { value: 'latest', label: 'Latest first' },
+            { value: 'oldest', label: 'Oldest first' },
+          ]} onChange={(value) => { setSort(value as 'latest' | 'oldest'); }} />
+        </div>
         {turns.length === 0 && <Empty text="This session has no requests or commands yet." />}
         <ol className="session-request-list" aria-label="Session requests" aria-busy={pending}>
           {shown.map((turn, index) => {
@@ -248,7 +268,8 @@ function SessionHistory({ session, visible, onBack }: { session: ChatSessionSumm
                 </div>}
                 {(!turn.taskId || result?.rows?.length === 0) && <p className="session-request-empty">No command execution recorded for this request.</p>}
                 {result?.rows && result.rows.length > 0 && <ul className="session-command-list" aria-label={`Commands for request ${index + 1}`}>
-                  {result.rows.map((row) => <li key={row.id}>
+                  {[...result.rows].sort((a, b) => (sort === 'latest' ? -1 : 1)
+                    * (a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id))).map((row) => <li key={row.id}>
                     <button type="button" className="session-command" onClick={() => setSelected(row)}>
                       <TerminalIcon size={15} /><span className="session-command-main"><code>{row.commandRedacted}</code>
                         <span className="meta">{formatWhen(row.createdAtMs)} · {row.modelId}{row.exitCode !== null ? ` · exit ${row.exitCode}` : ''}</span></span>
@@ -261,8 +282,12 @@ function SessionHistory({ session, visible, onBack }: { session: ChatSessionSumm
             );
           })}
         </ol>
-        {turns.length > limit && <button type="button" className="btn" disabled={pending}
-          onClick={() => setLimit((value) => value + REQUESTS_PER_PAGE)}>Load more requests</button>}
+        {turns.length > limit && <div className="history-pagination">
+          <button type="button" className="btn" disabled={pending}
+            onClick={() => setLimit((value) => value + REQUESTS_PER_PAGE)}>Load more requests</button>
+          <button type="button" className="btn btn-ghost" disabled={pending}
+            onClick={() => setLimit(turns.length)}>Load all requests</button>
+        </div>}
       </>}
       {selected && <Drawer title="Execution" subtitle={formatWhen(selected.createdAtMs)} onClose={() => setSelected(null)}>
         <section aria-label="Execution details"><ExecutionDetails execution={selected} /></section>
@@ -293,6 +318,8 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [commandSort, setCommandSort] = useState<'latest' | 'oldest'>('latest');
 
   useEffect(() => {
     let active = true;
@@ -347,6 +374,42 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
       setError(describeError(err));
     }
   }
+
+  async function loadAllTasks() {
+    if (!hostId || !tasksCursor || loadingAll) return;
+    setLoadingAll(true); setError(null);
+    try {
+      let cursor: string | undefined = tasksCursor;
+      const rest: TaskView[] = [];
+      while (cursor) {
+        const page = await historyTasks(hostId, cursor);
+        rest.push(...page.items);
+        cursor = page.nextCursor ?? undefined;
+      }
+      setTasks((current) => [...current, ...rest]);
+      setTasksCursor(null);
+    } catch (err) { setError(describeError(err)); }
+    finally { setLoadingAll(false); }
+  }
+
+  async function loadAllCommands() {
+    if (!hostId || !nextCursor || loadingAll) return;
+    setLoadingAll(true); setError(null);
+    try {
+      let cursor: string | undefined = nextCursor;
+      const rest: ExecutionView[] = [];
+      while (cursor) {
+        const page = await historyQuery(hostId, currentFilter(), cursor);
+        rest.push(...page.items);
+        cursor = page.nextCursor ?? undefined;
+      }
+      setRows((current) => [...current, ...rest]);
+      setNextCursor(null);
+    } catch (err) { setError(describeError(err)); }
+    finally { setLoadingAll(false); }
+  }
+
+  const sortedRows = commandSort === 'latest' ? rows : [...rows].reverse();
 
   async function loadSummary() {
     if (!hostId) return;
@@ -436,15 +499,7 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
         </div>
         <label className="field host-select">
           Host
-          <select value={hostId} onChange={(e) => setHostId(e.target.value)}>
-            {hosts.length === 0 && <option value="">No hosts</option>}
-            {hosts.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.label}
-                {h.archived ? ' (archived)' : ''}
-              </option>
-            ))}
-          </select>
+          <ThemedSelect label="Host" value={hostId} options={hosts.length === 0 ? [{ value: '', label: 'No hosts' }] : hosts.map((h) => ({ value: h.id, label: `${h.label}${h.archived ? ' (archived)' : ''}` }))} onChange={setHostId} />
         </label>
       </header>
 
@@ -545,8 +600,11 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
           )}
           {tasksCursor && (
             <div className="toolbar-row">
-              <button type="button" className="btn" onClick={() => loadTasks(true)}>
+              <button type="button" className="btn" disabled={loadingAll} onClick={() => loadTasks(true)}>
                 Load more
+              </button>
+              <button type="button" className="btn btn-ghost" disabled={loadingAll} onClick={() => void loadAllTasks()}>
+                {loadingAll ? 'Loading…' : 'Load all'}
               </button>
             </div>
           )}
@@ -573,6 +631,11 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
                 </label>
               ))}
             </fieldset>
+            <label className="field history-sort">
+              Sort by
+              <ThemedSelect label="Sort by" value={commandSort} options={[{ value: 'latest', label: 'Latest command first' }, { value: 'oldest', label: 'Oldest command first' }]}
+                onChange={(value) => { setCommandSort(value as 'latest' | 'oldest'); if (nextCursor) void loadAllCommands(); }} />
+            </label>
             <span className="grow" />
             <button type="button" className="btn btn-primary" onClick={() => search(false)} disabled={!hostId}>
               Apply
@@ -593,7 +656,7 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
+                  {sortedRows.map((row) => (
                     <tr key={row.id} onClick={() => openExecution(row)} aria-selected={selected?.id === row.id}>
                       <td className="muted" style={{ whiteSpace: 'nowrap' }}>
                         {formatWhen(row.createdAtMs)}
@@ -615,8 +678,11 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
           )}
           {nextCursor && (
             <div className="toolbar-row">
-              <button type="button" className="btn" onClick={() => search(true)}>
+              <button type="button" className="btn" disabled={loadingAll} onClick={() => search(true)}>
                 Load more
+              </button>
+              <button type="button" className="btn btn-ghost" disabled={loadingAll} onClick={() => void loadAllCommands()}>
+                {loadingAll ? 'Loading…' : 'Load all'}
               </button>
             </div>
           )}

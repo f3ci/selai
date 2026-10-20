@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { describeError, hostList, hostSave, kdbxPreview, sshConfigRead, type HostView } from '../ipc';
 import { Drawer } from '../ui/Overlay';
+import { ThemedSelect } from '../ui/ThemedSelect';
 import { collectPages } from '../ui/collectPages';
 import {
   FIELDS, MAX_IMPORT_BYTES, MAX_KDBX_BYTES, TEMPLATE, guessMapping, parseProfileTable, parseSshConfig, prepareProfiles,
@@ -228,10 +229,7 @@ export function HostImport({ onClose, onImported }: Props) {
               {FIELDS.map((field) => (
                 <label className="field" key={field}>
                   {LABELS[field]}
-                  <select value={mapping[field]} onChange={(event) => setMapping((current) => ({ ...current, [field]: event.target.value }))}>
-                    <option value="">Not mapped</option>
-                    {table.headers.map((header) => <option key={header} value={header}>{header}</option>)}
-                  </select>
+                  <ThemedSelect label={LABELS[field]} value={mapping[field]} options={[{ value: '', label: 'Not mapped' }, ...table.headers.map((header) => ({ value: header, label: header }))]} onChange={(value) => setMapping((current) => ({ ...current, [field]: value }))} />
                 </label>
               ))}
             </div>

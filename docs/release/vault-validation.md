@@ -22,8 +22,9 @@ authenticated history tampering, credential migration, retained metadata and
 exports, migration failure preserving sources, pending credential-cleanup
 tombstones, changed source files not being deleted, managed private keys,
 backup/restore with passphrase or recovery key, recovery rotation, passphrase
-change, idle admission, cancellation of network operations, closing a live local
-terminal, final transcript persistence, and inaccessible DB references after lock.
+change, idle admission, cancellation of network operations, live terminal standby
+and reuse after unlock, final transcript persistence, and inaccessible DB
+references after lock.
 The graceful drain test proves the current command's completed result is retained
 and the following command never starts.
 

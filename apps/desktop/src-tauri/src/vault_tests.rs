@@ -319,14 +319,22 @@ async fn lock_cancels_network_rpcs_instead_of_waiting_for_their_timeout() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn lock_closes_a_live_local_terminal_before_releasing_the_vault() {
+async fn lock_preserves_a_live_terminal_and_reuses_it_after_unlock() {
     let dir = tempfile::tempdir().unwrap();
     let manager = VaultManager::new(dir.path().into()).unwrap();
     manager.initialize(phrase(), &MemoryStore::new()).unwrap();
     let lease = manager.services().unwrap();
     let host = lease.local_host().unwrap();
-    lease
-        .terminal_connect(&host.id, 80, 24, Arc::new(|_| {}))
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let session = lease
+        .terminal_connect(
+            &host.id,
+            80,
+            24,
+            Arc::new(move |event| {
+                let _ = tx.send(event);
+            }),
+        )
         .await
         .unwrap();
     assert_eq!(lease.terminal_count(), 1);
@@ -334,8 +342,43 @@ async fn lock_closes_a_live_local_terminal_before_releasing_the_vault() {
     tokio::time::timeout(Duration::from_secs(10), finish_lock(&manager, true))
         .await
         .unwrap();
-    assert_eq!(manager.status().unwrap().terminals, 0);
+    assert_eq!(manager.status().unwrap().terminals, 1);
     assert_eq!(manager.status().unwrap().phase, "locked");
+    assert!(manager.services().is_err());
+    manager.terminal_ack(&session, 0).unwrap();
+    manager.unlock(phrase()).unwrap();
+    let lease = manager.services().unwrap();
+    assert_eq!(lease.terminal_count(), 1);
+    assert_eq!(lease.terminal_host(&session).unwrap().to_string(), host.id);
+    lease
+        .terminal_input(&session, "printf 'standby-%s\\n' 42\n".into())
+        .await
+        .unwrap();
+    let mut output = String::new();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        use base64::Engine as _;
+        while let Some(event) = rx.recv().await {
+            match event {
+                crate::dto::TerminalEvent::Data { data } => {
+                    let bytes = base64::engine::general_purpose::STANDARD
+                        .decode(data)
+                        .unwrap();
+                    output.push_str(&String::from_utf8_lossy(&bytes));
+                    if output.contains("standby-42") {
+                        break;
+                    }
+                }
+                crate::dto::TerminalEvent::Closed { .. } => {
+                    panic!("terminal closed during standby")
+                }
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert!(output.contains("standby-42"));
+    lease.terminal_disconnect(&session).await.unwrap();
 }
 
 #[test]

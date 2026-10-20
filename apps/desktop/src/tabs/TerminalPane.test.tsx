@@ -2,12 +2,14 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as ipc from '../ipc';
 import { TerminalPane } from './TerminalPane';
+import { VaultWorkspacePhase } from '../vaultWorkspace';
 
 const written: unknown[] = [];
 const terminals: { options: { cursorBlink: boolean; fontSize: number; theme?: { background?: string; foreground?: string } }; focus: ReturnType<typeof vi.fn> }[] = [];
 const fits: ReturnType<typeof vi.fn>[] = [];
 let deferWrites = false;
 const writeCallbacks: (() => void)[] = [];
+let sendTerminalData: (data: string) => void = () => {};
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
@@ -29,7 +31,8 @@ vi.mock('@xterm/xterm', () => ({
     writeln(text: string) {
       written.push(text);
     }
-    onData() {
+    onData(callback: (data: string) => void) {
+      sendTerminalData = callback;
       return { dispose() {} };
     }
     onResize() {
@@ -64,6 +67,33 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('TerminalPane', () => {
+  it('blocks input during standby and resumes the same terminal after unlock', async () => {
+    let deliver: (event: ipc.TerminalEvent) => void = () => {};
+    const connect = vi.spyOn(ipc, 'terminalConnect').mockImplementation((_host, _cols, _rows, onEvent) => {
+      deliver = onEvent; return Promise.resolve('standby-session');
+    });
+    const input = vi.spyOn(ipc, 'terminalInput').mockResolvedValue();
+    const disconnect = vi.spyOn(ipc, 'terminalDisconnect').mockResolvedValue();
+    const { rerender } = render(<VaultWorkspacePhase.Provider value="unlocked"><TerminalPane host={host} hidden={false} /></VaultWorkspacePhase.Provider>);
+    await screen.findByText('Connected');
+    sendTerminalData('before');
+    expect(input).toHaveBeenCalledWith('standby-session', 'before');
+    rerender(<VaultWorkspacePhase.Provider value="locked"><TerminalPane host={host} hidden /></VaultWorkspacePhase.Provider>);
+    written.length = 0;
+    act(() => deliver({ type: 'data', data: btoa('standby output') }));
+    expect(written).toHaveLength(0);
+    expect(ipc.terminalAck).not.toHaveBeenCalled();
+    sendTerminalData('blocked');
+    expect(input).toHaveBeenCalledTimes(1);
+    expect(disconnect).not.toHaveBeenCalled();
+    rerender(<VaultWorkspacePhase.Provider value="unlocked"><TerminalPane host={host} hidden={false} /></VaultWorkspacePhase.Provider>);
+    expect(new TextDecoder().decode(written[0] as Uint8Array)).toBe('standby output');
+    await waitFor(() => expect(ipc.terminalAck).toHaveBeenCalledWith('standby-session', 14));
+    sendTerminalData('after');
+    expect(input).toHaveBeenLastCalledWith('standby-session', 'after');
+    expect(connect).toHaveBeenCalledOnce();
+    expect(terminals).toHaveLength(1);
+  });
   it('changes the palette of an existing terminal without reconnecting or clearing it', async () => {
     const connect = vi.spyOn(ipc, 'terminalConnect').mockResolvedValue('theme-session');
     const { rerender } = render(<TerminalPane host={host} hidden={false} theme="dark" />);
@@ -71,6 +101,15 @@ describe('TerminalPane', () => {
     expect(terminals[0]?.options.theme?.background).toBe('#141618');
     rerender(<TerminalPane host={host} hidden={false} theme="light" />);
     expect(terminals[0]?.options.theme).toMatchObject({ background: '#fafaf8', foreground: '#333b35' });
+    for (const [theme, background, foreground, red] of [
+      ['catppuccin-latte', '#eff1f5', '#4c4f69', '#d20f39'],
+      ['catppuccin-frappe', '#303446', '#c6d0f5', '#e78284'],
+      ['catppuccin-macchiato', '#24273a', '#cad3f5', '#ed8796'],
+      ['catppuccin-mocha', '#1e1e2e', '#cdd6f4', '#f38ba8'],
+    ] as const) {
+      rerender(<TerminalPane host={host} hidden={false} theme={theme} />);
+      expect(terminals[0]?.options.theme).toMatchObject({ background, foreground, red });
+    }
     expect(terminals).toHaveLength(1);
     expect(connect).toHaveBeenCalledOnce();
   });

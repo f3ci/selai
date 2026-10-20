@@ -14,6 +14,7 @@ import {
   type TemplateView,
 } from '../ipc';
 import { Field } from '../ui/Field';
+import { ThemedSelect } from '../ui/ThemedSelect';
 import { Drawer } from '../ui/Overlay';
 import { AlertIcon, BoltIcon, CheckIcon, CloseIcon, EditIcon, KeyIcon, PlugIcon, PlusIcon, TrashIcon } from '../ui/icons';
 
@@ -357,16 +358,7 @@ export function ProvidersPanel() {
             )}
             <div className="form-section">
               <Field label="Start from a template" hint={form.note || undefined}>
-                <select defaultValue="" onChange={(e) => applyTemplate(e.target.value)}>
-                  <option value="" disabled>
-                    Choose…
-                  </option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.displayName}
-                    </option>
-                  ))}
-                </select>
+                <ThemedSelect label="Provider template" value="" placeholder="Choose…" options={templates.map((t) => ({ value: t.id, label: t.displayName }))} onChange={applyTemplate} />
               </Field>
               <label className="field">
                 Name
@@ -374,16 +366,8 @@ export function ProvidersPanel() {
               </label>
               <label className="field">
                 Protocol
-                <select
-                  value={form.protocol}
-                  onChange={(e) => changeEndpoint({ ...form, protocol: e.target.value as ProviderProtocolName })}
-                >
-                  {PROTOCOLS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
+                <ThemedSelect label="Protocol" value={form.protocol} options={PROTOCOLS.map((p) => ({ value: p.value, label: p.label }))}
+                  onChange={(value) => changeEndpoint({ ...form, protocol: value as ProviderProtocolName })} />
               </label>
             </div>
             <div className="form-section">

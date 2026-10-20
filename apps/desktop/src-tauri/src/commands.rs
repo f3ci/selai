@@ -307,6 +307,130 @@ pub fn ssh_key_import(
     services(&state)?.ssh_key_import(name, private_key_base64, passphrase)
 }
 
+#[tauri::command]
+pub async fn ssh_key_import_from_file(
+    state: State<'_, AppState>,
+    name: String,
+    passphrase: Option<String>,
+) -> Result<Option<crate::dto::SshKeyView>, CommandError> {
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| {
+            CommandError::new(ErrorCode::InvalidInput, "home directory is unavailable")
+        })?;
+    let ssh_dir = home.join(".ssh");
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        let picker = rfd::FileDialog::new()
+            .set_title("Choose an SSH private key (files without extensions are supported)");
+        let picker = if ssh_dir.is_dir() {
+            picker.set_directory(ssh_dir)
+        } else {
+            picker
+        };
+        picker.pick_file()
+    })
+    .await
+    .map_err(|_| CommandError::new(ErrorCode::Internal, "SSH key picker failed."))?;
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let bytes = crate::vault_service::read_key_file(&path)?;
+    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &*bytes);
+    let key = services(&state)?.ssh_key_import(name, encoded, passphrase)?;
+    Ok(Some(key))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshKeyScanResult {
+    pub imported: Vec<crate::dto::SshKeyView>,
+    pub already_saved: usize,
+    pub skipped: usize,
+}
+
+/// Imports supported, unencrypted private keys in ~/.ssh, regardless of filename
+/// extension. Public keys and SSH configuration files are ignored.
+#[tauri::command]
+pub fn ssh_key_scan_local(state: State<'_, AppState>) -> Result<SshKeyScanResult, CommandError> {
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| {
+            CommandError::new(ErrorCode::InvalidInput, "home directory is unavailable")
+        })?;
+    let dir = home.join(".ssh");
+    let entries = std::fs::read_dir(&dir)
+        .map_err(|_| CommandError::new(ErrorCode::InvalidInput, "could not read ~/.ssh"))?;
+    let lease = services(&state)?;
+    let saved = lease.ssh_key_list()?;
+    let mut fingerprints: std::collections::HashSet<String> = saved
+        .iter()
+        .map(|key| key.fingerprint_sha256.clone())
+        .collect();
+    let mut result = SshKeyScanResult {
+        imported: Vec::new(),
+        already_saved: 0,
+        skipped: 0,
+    };
+    for entry in entries {
+        let Ok(entry) = entry else {
+            result.skipped += 1;
+            continue;
+        };
+        let filename = entry.file_name().to_string_lossy().into_owned();
+        if matches!(
+            filename.as_str(),
+            "config" | "known_hosts" | "known_hosts.old" | "authorized_keys"
+        ) || filename.ends_with(".pub")
+        {
+            continue;
+        }
+        let Ok(kind) = entry.file_type() else {
+            result.skipped += 1;
+            continue;
+        };
+        if !kind.is_file() {
+            continue;
+        }
+        let Ok(bytes) = crate::vault_service::read_key_file(&entry.path()) else {
+            result.skipped += 1;
+            continue;
+        };
+        let Ok(pem) = std::str::from_utf8(&bytes) else {
+            result.skipped += 1;
+            continue;
+        };
+        let Ok(parsed) = russh::keys::decode_secret_key(pem, None) else {
+            result.skipped += 1;
+            continue;
+        };
+        if selai_ssh::validate_private_key(&parsed).is_err() {
+            result.skipped += 1;
+            continue;
+        }
+        let fingerprint = parsed
+            .public_key()
+            .fingerprint(russh::keys::HashAlg::Sha256)
+            .to_string();
+        if !fingerprints.insert(fingerprint) {
+            result.already_saved += 1;
+            continue;
+        }
+        if filename.trim().is_empty()
+            || filename.len() > 80
+            || filename.chars().any(char::is_control)
+        {
+            result.skipped += 1;
+            continue;
+        }
+        use base64::Engine as _;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&*bytes);
+        result
+            .imported
+            .push(lease.ssh_key_import(filename, encoded, None)?);
+    }
+    Ok(result)
+}
+
 static SSH_KEY_GENERATION: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 
 #[tauri::command]
@@ -466,7 +590,7 @@ pub fn terminal_ack(
     session_id: String,
     bytes: usize,
 ) -> Result<(), CommandError> {
-    services(&state)?.terminal_ack(&session_id, bytes)
+    state.vault()?.terminal_ack(&session_id, bytes)
 }
 
 #[tauri::command]

@@ -77,6 +77,8 @@ pub struct TaskSpec {
     pub task: TaskId,
     pub host: HostId,
     pub host_label: String,
+    /// Explicitly tells the model which machine the tools are connected to.
+    pub host_context: String,
     pub provider: Option<ProviderId>,
     pub settings: ProviderSettings,
     pub api_key: Option<SecretValue>,
@@ -194,7 +196,9 @@ where
     }
 
     let mut messages = Vec::with_capacity(spec.history.len() + 2);
-    messages.push(Message::System(SYSTEM_PROMPT.to_owned()));
+    messages.push(Message::System(system_prompt_for_target(
+        &spec.host_context,
+    )));
     messages.extend(spec.history.iter().cloned());
     messages.push(Message::User(spec.prompt.clone()));
     let tools = tool_definitions();
@@ -337,6 +341,26 @@ fn prompt_preview(prompt: &str) -> String {
         .chars()
         .take(PROMPT_PREVIEW_MAX)
         .collect()
+}
+
+fn system_prompt_for_target(host_context: &str) -> String {
+    format!(
+        "{SYSTEM_PROMPT}\n\nCurrent execution target: {}. The SSH or local execution tools are connected to this selected target. You can inspect or execute on it when the user asks. Do not claim that you lack access to this target. You do not have access to other servers unless the user selects them separately.",
+        host_context
+    )
+}
+
+#[cfg(test)]
+mod target_context_tests {
+    use super::system_prompt_for_target;
+
+    #[test]
+    fn tells_the_model_that_tools_are_connected_to_the_selected_server() {
+        let prompt = system_prompt_for_target("staging-db (ops@10.0.0.6:22)");
+        assert!(prompt.contains("Current execution target: staging-db (ops@10.0.0.6:22)"));
+        assert!(prompt.contains("Do not claim that you lack access to this target"));
+        assert!(prompt.contains("You do not have access to other servers"));
+    }
 }
 
 fn add_tokens(total: Option<u64>, turn: Option<u64>) -> Option<u64> {

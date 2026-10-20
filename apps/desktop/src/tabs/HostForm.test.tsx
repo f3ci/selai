@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as ipc from '../ipc';
 import { HostForm } from './HostForm';
+import { chooseSelectValue } from '../ui/selectTestUtils';
 
 afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
@@ -22,8 +23,7 @@ describe('HostForm', () => {
       authMethod: 'private_key', privateKeyPath: 'C:/Users/demo/.ssh/id_ed25519' } as ipc.HostView;
     const save = vi.spyOn(ipc, 'hostSave').mockResolvedValue(host);
     render(<HostForm host={host} onCancel={vi.fn()} onSaved={vi.fn()} />);
-    await screen.findByRole('option', { name: 'Work key · ssh-ed25519' });
-    expect(screen.getByLabelText('SSH key')).toHaveValue(host.privateKeyPath);
+    expect(await screen.findByRole('combobox', { name: 'SSH key' })).toHaveAttribute('aria-valuetext', 'Existing key file');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ privateKeyPath: host.privateKeyPath })));
   });
@@ -32,8 +32,8 @@ describe('HostForm', () => {
     const save = vi.spyOn(ipc, 'hostSave').mockResolvedValue({} as ipc.HostView);
     render(<HostForm host={null} onCancel={vi.fn()} onSaved={vi.fn()} />);
     fill('Label', 'Web'); fill('Host name or IP', 'example.test'); fill('Username', 'ops');
-    await screen.findByRole('option', { name: 'Production' });
-    fill('Group', 'production');
+    await screen.findByRole('combobox', { name: 'Group' });
+    chooseSelectValue('Group', 'production');
     expect(screen.queryByRole('button', { name: 'New group' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ groupId: 'production' })));
@@ -98,8 +98,8 @@ describe('HostForm', () => {
     fill('Username', 'ops');
     fill('Password', 'typed by mistake');
     fireEvent.click(screen.getByRole('button', { name: 'Private key' }));
-    await screen.findByRole('option', { name: 'Work key · ssh-ed25519' });
-    fill('SSH key', 'vault://key:key1');
+    await screen.findByRole('combobox', { name: 'SSH key' });
+    chooseSelectValue('SSH key', 'vault://key:key1');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(save.mock.calls[0]?.[0]).toMatchObject({ authMethod: 'private_key', privateKeyPath: 'vault://key:key1', password: undefined });

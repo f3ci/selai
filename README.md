@@ -5,7 +5,7 @@
 <p align="center"><strong>A desktop SSH workbench with AI assistance, tunnels, and proxies.</strong><br>
 SSH profiles, terminals, AI chat, port forwarding, and proxies in one app. You choose where the assistant may work and approve its commands, with optional root approval for one request on one host.</p>
 
-<p align="center"><sub>Preview 0.3.0 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
+<p align="center"><sub>Preview 0.3.1 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
 
 <p align="center">
   <a href="#quick-demo">Demo</a> ·
@@ -37,12 +37,29 @@ never included in requests to an AI provider.
 - **Everything is recorded.** Each request, command, outcome, and token count is
   saved to History, with an audit record written before remote execution.
 
-> **Version 0.3.0 is a preview.** Automated coverage includes Linux SSH and agent
+> **Version 0.3.1 is a preview.** Automated coverage includes Linux SSH and agent
 > flows with an OpenSSH fixture and mock AI providers, plus Windows encryption
 > and vault checks in the release build profile. Full interactive SSH and live
 > provider coverage across all platforms is not established. See [current milestone evidence](docs/release/milestones.md)
 > and [known security limits](SECURITY.md) before using Selai with sensitive
 > systems.
+
+## New in 0.3.1
+
+- Choose dark, light, system, or one of four Catppuccin themes; open terminals
+  follow the selected palette without reconnecting.
+- Scan `~/.ssh` for supported unencrypted private keys or choose a key file,
+  including extensionless files, and import it into the encrypted vault.
+- Recall earlier chat prompts with the up and down arrows at the start or end
+  of the composer. Missing `@host` mentions must be resolved before sending.
+- Lock the vault while keeping existing terminal connections on standby. Terminal
+  input stays blocked until unlock; close a tab or quit Selai to disconnect it.
+- The assistant receives the selected target's host label and connection address,
+  and completed command output is refreshed from the recorded task timeline.
+
+See the [0.3.1 release notes](docs/release/RELEASE_NOTES.md),
+[resource limits and performance evidence](docs/release/performance.md), and
+[known security limits](SECURITY.md).
 
 ## New in 0.3.0
 
@@ -54,9 +71,7 @@ never included in requests to an AI provider.
 - Updated screenshots and an inline MP4 walkthrough cover SSH profiles, AI Assistant,
   port forwarding, and proxies.
 
-See the [0.3.0 release notes](docs/release/RELEASE_NOTES.md),
-[resource limits and performance evidence](docs/release/performance.md), and
-[known security limits](SECURITY.md).
+See the [0.3.0 release notes](docs/release/RELEASE_NOTES.md).
 
 ## Quick demo
 
@@ -116,13 +131,13 @@ provider is contacted. [Recording details and reproduction steps](docs/media/REA
 | **Port forwarding** | Save and start local, remote, or dynamic SOCKS5 TCP tunnels from a UI. Choose an SSH host, bind address/port and destination, then inspect active connections and byte counts. |
 | **SSH proxies** | Save HTTP CONNECT or SOCKS5 profiles with optional authentication, then enable a proxy on any SSH profile. Terminal, AI, SFTP, forwarding and host-key checks use that route. |
 | **Host verification** | Inspect and explicitly trust a fingerprint on first connection. A changed host key blocks connection until you confirm its replacement. |
-| **Terminal** | Open interactive SSH terminals in tabs, resize them, adjust the terminal font with Ctrl+Plus or Ctrl+Minus, see connection and exit status, reconnect, and edit a host after a failed login. Terminal colors follow the light/dark/system theme without reconnecting. Open a terminal for **This computer** too. |
+| **Terminal** | Open interactive SSH terminals in tabs, resize them, adjust the terminal font with Ctrl+Plus or Ctrl+Minus, see connection and exit status, reconnect, and edit a host after a failed login. Terminal colors follow the selected theme, including all four Catppuccin flavors, without reconnecting. Open a terminal for **This computer** too. |
 | **AI chat** | Discuss a question without a server, or bind a task to one or more SSH hosts or This computer. Mention hosts with `@` for one message to run independent tasks in parallel, follow the focused terminal, or pin a server in the chat. Each host has its own output and change approvals. Assistant replies render Markdown, tables, task lists, code blocks, and Mermaid diagrams. |
 | **Command control** | Fixed diagnostics may run without a prompt. Other commands need approval; a root approval can optionally cover further root commands in the same request on the same host. Denied, expired, and interrupted work is not replayed automatically. |
 | **Providers** | Configure OpenAI Responses, OpenAI Chat Completions and compatible endpoints, or Anthropic Messages. Check an API key, choose or enter a model ID, and test a real tool-call round trip. |
 | **History** | Search saved AI sessions by title, then open a session to review its requests and command executions across servers, including status, exit codes and stored output. Browse by host for older tasks, provider token counts, timeline filters, encrypted history exports and output retention. |
 | **Profile import** | Preview CSV, JSON, password-protected KDBX, or OpenSSH config profiles before import. Upload a config file or read `~/.ssh/config` directly. Use the shared CSV template for exports from other tools. Existing hosts are not replaced. |
-| **Workbench** | Use the host explorer, terminal and History/Providers tabs, and the assistant side by side. Toggle the right-hand Assistant panel from the header and drag its divider to give it more room. The window controls are integrated into the workbench header. Choose dark, light, or system theme. |
+| **Workbench** | Use the host explorer, terminal and History/Providers tabs, and the assistant side by side. Toggle the right-hand Assistant panel from the header and drag its divider to give it more room. The window controls are integrated into the workbench header. Choose dark, light, system, or Catppuccin Latte, Frappé, Macchiato, and Mocha. |
 | **Encrypted vault** | Protect credentials, managed private keys, host metadata, chat, and history with one passphrase. Use automatic locking, a separate recovery key, encrypted backup/restore, encrypted history exports, and manual compaction of unused database space while idle. |
 
 ### SSH hosts and terminals
@@ -366,13 +381,15 @@ are kept; **Security** shows pending cleanup and offers a retry. Old exports
 remain accessible under **Security → Migrated history exports**. Missing private
 key files remain external references until you replace them with an available file.
 
-Unlock once each time Selai starts. **Lock** in the header closes terminal
-connections and stops admission of new commands. With active work you can let
+Unlock once each time Selai starts. **Lock** in the header keeps terminal
+connections on standby and blocks terminal input and new commands. With active AI work you can let
 the current command finish, or cancel immediately. The workspace is hidden
 while work drains; it is reported locked only after the database closes and the
-vault key is dropped. A disconnected remote command may still run on its server;
+vault key is dropped. Terminal transport keys and bounded output buffers remain
+in memory until you close their tabs or quit Selai. A cancelled AI command may still run on its server;
 Selai never replays it automatically. Reopening chat history restores the latest
-session without executing its commands; terminal connections must be reopened.
+session without executing its commands. Unlocking resumes the existing terminal
+sessions; restarting Selai requires opening new terminal connections.
 
 Auto-lock defaults to **15 minutes**; choose 5, 15, 30, or 60 minutes in
 **Security**. Keyboard, pointer, and scrolling input in Selai reset the timer;
@@ -409,7 +426,7 @@ Keep the old folder until you have verified the restored hosts and history.
 
 ### Install a preview build
 
-Download [Selai 0.3.0 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.3.0).
+Download [Selai 0.3.1 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.3.1).
 Builds are also available from the **Release packaging** workflow artifacts.
 Packages are provided for:
 
@@ -439,7 +456,10 @@ commands, signing status, and workflow instructions.
 8. Open **History** to inspect the task and command records.
 
 **Ctrl+Shift+E** toggles the host explorer. The status bar lets you switch
-between dark, light, and system theme.
+between dark, light, system, and the four Catppuccin flavors. The saved choice
+also applies to the unlock screen and existing terminals, including their ANSI
+colors, cursor, and selection. Catppuccin palettes are used under the
+[MIT license](docs/licenses/catppuccin.txt).
 
 ## Build from source
 

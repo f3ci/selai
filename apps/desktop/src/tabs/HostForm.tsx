@@ -16,6 +16,7 @@ import { Field } from '../ui/Field';
 import { Drawer } from '../ui/Overlay';
 import { PasswordInput } from '../ui/PasswordInput';
 import { ChevronIcon, KeyIcon } from '../ui/icons';
+import { ThemedSelect } from '../ui/ThemedSelect';
 import { proxyList, type ProxyProfile } from '../network';
 
 interface Props {
@@ -209,10 +210,7 @@ export function HostForm({ host, onCancel, onSaved, onManageKeys, onManageProxie
             />
           </Field>
           <Field label="Group" hint="Create groups with + beside SSH hosts in the sidebar. You can also drag profiles into groups.">
-            <select value={form.groupId} onChange={(e) => set('groupId')(e.target.value)}>
-              <option value="">Ungrouped</option>
-              {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-            </select>
+            <ThemedSelect label="Group" value={form.groupId} options={[{ value: '', label: 'Ungrouped' }, ...groups.map((group) => ({ value: group.id, label: group.name }))]} onChange={(value) => set('groupId')(value)} />
           </Field>
           <div className="field-row">
             <label className="field">
@@ -229,7 +227,7 @@ export function HostForm({ host, onCancel, onSaved, onManageKeys, onManageProxie
         <div className="form-section">
           <h3>Connection route</h3>
           <label className="check"><input type="checkbox" checked={proxyEnabled} onChange={(e) => setProxyEnabled(e.target.checked)} />Connect through a proxy</label>{proxyEnabled && <>
-            <Field label="Proxy profile" hint="Used by terminal, AI Assistant, SFTP, and port forwarding."><select value={form.proxyId} onChange={(e) => set('proxyId')(e.target.value)}><option value="">Choose proxy</option>{proxies.map((proxy) => <option key={proxy.id} value={proxy.id}>{proxy.name} / {proxy.kind === 'http' ? 'HTTP CONNECT' : 'SOCKS5'}</option>)}</select></Field>
+            <Field label="Proxy profile" hint="Used by terminal, AI Assistant, SFTP, and port forwarding."><ThemedSelect label="Proxy profile" value={form.proxyId} options={[{ value: '', label: 'Choose proxy' }, ...proxies.map((proxy) => ({ value: proxy.id, label: `${proxy.name} / ${proxy.kind === 'http' ? 'HTTP CONNECT' : 'SOCKS5'}` }))]} onChange={(value) => set('proxyId')(value)} /></Field>
             {proxyError && <p role="alert" className="banner" data-tone="danger">{proxyError}</p>}
             {onManageProxies && <button type="button" className="btn btn-sm" onClick={onManageProxies}>{proxies.length ? 'Manage proxies' : 'Add a proxy'}<ChevronIcon size={14} /></button>}
           </>}
@@ -270,17 +268,11 @@ export function HostForm({ host, onCancel, onSaved, onManageKeys, onManageProxie
           ) : (
             <>
               <Field label="SSH key" hint="Select a key from your encrypted vault.">
-                <select value={form.privateKeyPath} disabled={keysLoading}
-                  onChange={(e) => set('privateKeyPath')(e.target.value)}>
-                  <option value="">{keysLoading ? 'Loading keys…' : 'Choose an SSH key…'}</option>
-                  {form.privateKeyPath && !keys.some((key) => form.privateKeyPath === `vault://key:${key.id}`) && (
-                    <option value={form.privateKeyPath}>
-                      {form.privateKeyPath.startsWith('vault://key:') ? 'Previously selected key (unavailable)' :
-                        form.privateKeyPath.startsWith('vault://') ? 'Existing key saved for this host' : 'Existing key file'}
-                    </option>
-                  )}
-                  {keys.map((key) => <option key={key.id} value={`vault://key:${key.id}`}>{key.name} · {key.algorithm}</option>)}
-                </select>
+                <ThemedSelect label="SSH key" value={form.privateKeyPath} disabled={keysLoading}
+                  options={[{ value: '', label: keysLoading ? 'Loading keys…' : 'Choose an SSH key…' },
+                    ...(form.privateKeyPath && !keys.some((key) => form.privateKeyPath === `vault://key:${key.id}`) ? [{ value: form.privateKeyPath, label: form.privateKeyPath.startsWith('vault://key:') ? 'Previously selected key (unavailable)' : form.privateKeyPath.startsWith('vault://') ? 'Existing key saved for this host' : 'Existing key file' }] : []),
+                    ...keys.map((key) => ({ value: `vault://key:${key.id}`, label: `${key.name} · ${key.algorithm}` }))]}
+                  onChange={(value) => set('privateKeyPath')(value)} />
               </Field>
               {keyError && <p role="alert" className="banner" data-tone="danger">{keyError}</p>}
               {!keysLoading && !keyError && keys.length === 0 && <p className="hint">No managed SSH keys yet. Generate or import one in SSH Keys, then return to this profile.</p>}

@@ -429,6 +429,7 @@ fn spec(w: &World, base: &str, limits: Limits) -> TaskSpec {
         task: TaskId::new(),
         host: w.host,
         host_label: w.host_label.clone(),
+        host_context: format!("{} (ops@example.test:22)", w.host_label),
         provider: None,
         settings: settings(base),
         api_key: None,

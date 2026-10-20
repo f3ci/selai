@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProxiesPage } from './ProxiesPage';
+import { chooseSelectValue } from '../ui/selectTestUtils';
 import { ForwardingPage } from './ForwardingPage';
 import { SftpPage } from './SftpPage';
 import { HostForm } from './HostForm';
@@ -127,7 +128,7 @@ describe('network management flows', () => {
     render(<ProxiesPage visible />);
     fireEvent.click(screen.getByRole('button', { name: 'New proxy' }));
     fireEvent.change(screen.getByLabelText('Name', { exact: true }), { target: { value: 'Office gateway' } });
-    fireEvent.change(screen.getByLabelText('Proxy protocol'), { target: { value: 'http' } });
+    chooseSelectValue('Proxy protocol', 'http');
     expect(screen.getByLabelText('Port', { exact: true })).toHaveValue(8080);
     fireEvent.change(screen.getByLabelText('Proxy host'), { target: { value: 'proxy.example.com' } });
     fireEvent.click(screen.getByLabelText('Use proxy authentication'));
@@ -162,10 +163,8 @@ describe('network management flows', () => {
     api.hostSave.mockResolvedValue({ ...host, proxyId: 'proxy-1' });
     render(<HostForm host={host} onCancel={vi.fn()} onSaved={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('Connect through a proxy'));
-    await screen.findByRole('option', { name: /Office gateway/ });
-    fireEvent.change(screen.getByLabelText('Proxy profile', { exact: true }), {
-      target: { value: 'proxy-1' },
-    });
+    await screen.findByRole('combobox', { name: 'Proxy profile' });
+    chooseSelectValue('Proxy profile', 'proxy-1');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(api.hostSave).toHaveBeenCalledWith(

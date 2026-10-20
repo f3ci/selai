@@ -8,8 +8,8 @@ repository.workspace = true
 [dependencies]
 futures-util = "0.3"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "stream", "http2"] }
-selai-domain = { version = "0.3.0", path = "../selai-domain" }
-selai-secrets = { version = "0.3.0", path = "../selai-secrets" }
+selai-domain = { version = "0.3.1", path = "../selai-domain" }
+selai-secrets = { version = "0.3.1", path = "../selai-secrets" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

@@ -49,8 +49,13 @@ copied into chat, localStorage, logs, or audit records. JS/runtime copies cannot
 be guaranteed to be physically erased from memory. Private keys, key passphrases,
 sudo passwords, and provider API keys have no equivalent reveal command.
 
-Locking denies new operations, disconnects terminals, drains/cancels agent
-work, closes the encrypted connection, and drops the vault key. The UI reports
+Locking denies new operations, drains/cancels agent work, closes SFTP and port
+forwarding, closes the encrypted connection, and drops the vault key. Existing
+terminal transports stay connected in standby; their session keys and bounded
+output buffers remain in process memory behind the hidden, inert workspace.
+Forms and chat unmount. Terminal input is blocked until unlock, while output
+acknowledgements may release bounded transport credits. Closing the tab or
+quitting Selai disconnects the terminal. The UI reports
 **locking** until that finishes. Idle timeout defaults to 15 minutes of app
 inactivity. Windows session lock and suspend notifications request locking;
 a suspended process can finish releasing keys only when it runs again. Linux

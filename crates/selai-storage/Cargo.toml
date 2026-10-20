@@ -8,8 +8,8 @@ repository.workspace = true
 [dependencies]
 zeroize = "1"
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
-selai-audit = { version = "0.3.0", path = "../selai-audit" }
-selai-domain = { version = "0.3.0", path = "../selai-domain" }
+selai-audit = { version = "0.3.1", path = "../selai-audit" }
+selai-domain = { version = "0.3.1", path = "../selai-domain" }
 serde_json = "1"
 thiserror = "2.0.21"
 

@@ -13,6 +13,7 @@ import {
   localHost,
   preferencesGet,
   preferencesSet,
+  taskTimeline,
   providerModels,
   providerList,
   type HostKeyProblem,
@@ -28,6 +29,7 @@ import { collectPages } from '../ui/collectPages';
 import { HostKeyDialog } from '../ui/HostKeyDialog';
 import { Markdown } from '../ui/Markdown';
 import { TranscriptWindow } from '../ui/TranscriptWindow';
+import { ComposerPicker } from '../ui/ComposerPicker';
 import {
   AlertIcon,
   AtIcon,
@@ -42,7 +44,7 @@ import {
   TerminalIcon,
 } from '../ui/icons';
 import { SelaiLogo } from '../ui/SelaiLogo';
-import { applyEvent, isTerminal, setApprovalState, type TranscriptItem } from './agentTranscript';
+import { applyEvent, isTerminal, setApprovalState, setExecutionOutput, type TranscriptItem } from './agentTranscript';
 import { PROVIDERS_CHANGED } from './ProvidersPanel';
 import { useChatSessions, type ChatTurn as Turn } from './useChatSessions';
 
@@ -115,6 +117,11 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
   const [active, setActive] = useState(0);
   const sessions = useChatSessions();
   const { turns, setTurns, updateAllTurns } = sessions;
+  const promptNavigation = useRef<{
+    entries: Turn[];
+    index: number;
+    draft: { text: string; hosts: HostView[]; mentions: string[] };
+  } | null>(null);
   const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
   const [sessionQuery, setSessionQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +288,8 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
   const pickerOpen = mention !== null && !(matches.length === 0 && mention.includes(' '));
 
   function onPromptChange(value: string) {
+    if (promptNavigation.current) setError(null);
+    promptNavigation.current = null;
     setPrompt(value);
     const remaining = draftMentions.filter((m) => value.includes(m));
     if (remaining.length !== draftMentions.length) {
@@ -297,6 +306,7 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
   }
 
   function pickHost(h: HostView) {
+    promptNavigation.current = null;
     const text = `@${h.label}`;
     if (!hosts.some((item) => item.id === h.id)) {
       setHosts((current) => [...current, h]);
@@ -316,6 +326,7 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
   }
 
   function clearTarget(hostId: string) {
+    promptNavigation.current = null;
     const selected = hosts.find((h) => h.id === hostId);
     if (selected) {
       const text = `@${selected.label}`;
@@ -326,6 +337,7 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
   }
 
   function onPromptKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.nativeEvent.isComposing) return;
     if (pickerOpen) {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -347,6 +359,42 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
           e.preventDefault();
           const target = matches[active] ?? matches[0];
           if (target) pickHost(target);
+          return;
+        }
+      }
+    }
+    if (!pickerOpen && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
+      && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const { selectionStart, selectionEnd } = e.currentTarget;
+      const up = e.key === 'ArrowUp';
+      const atBoundary = up ? !prompt.slice(0, selectionStart).includes('\n') : !prompt.slice(selectionEnd).includes('\n');
+      if (selectionStart === selectionEnd && atBoundary) {
+        let navigation = promptNavigation.current;
+        if (!navigation && up) {
+          const entries = turns.filter((turn) => turn.showPrompt);
+          if (entries.length) {
+            navigation = { entries, index: entries.length, draft: { text: prompt, hosts: [...hosts], mentions: [...draftMentions] } };
+            promptNavigation.current = navigation;
+          }
+        }
+        if (navigation) {
+          e.preventDefault();
+          navigation.index = Math.max(0, Math.min(navigation.entries.length, navigation.index + (up ? -1 : 1)));
+          const entry = navigation.entries[navigation.index];
+          const text = entry?.prompt ?? navigation.draft.text;
+          const mentions = entry ? entry.mentionText ?? [] : navigation.draft.mentions;
+          const recalledHosts = entry ? targets.filter((host) => mentions.includes(`@${host.label}`)) : navigation.draft.hosts;
+          setPrompt(text);
+          setHosts(recalledHosts);
+          setDraftMentions(mentions);
+          setMention(null);
+          setError(mentions.some((mention) => !recalledHosts.some((host) => mention === `@${host.label}`))
+            ? 'A server from this message is unavailable. Remove or reselect its @mention before sending.' : null);
+          if (!entry) promptNavigation.current = null;
+          requestAnimationFrame(() => {
+            const caret = up ? 0 : text.length;
+            textareaRef.current?.setSelectionRange(caret, caret);
+          });
           return;
         }
       }
@@ -375,7 +423,8 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
   // (plain discussion, which any provider can answer). A server needs tool calling.
   const messageHosts = hosts.length ? hosts : contextHost ? [contextHost] : [];
   const target = hosts[0] ?? contextHost;
-  const canSend = sessions.ready && !sessions.loading && !running && !modelsLoading && !!modelId && provider !== undefined && (messageHosts.length === 0 || modelVerified) && prompt.trim().length > 0;
+  const mentionsAvailable = draftMentions.every((mention) => hosts.some((host) => mention === `@${host.label}`));
+  const canSend = sessions.ready && !sessions.loading && !running && !modelsLoading && !!modelId && provider !== undefined && mentionsAvailable && (messageHosts.length === 0 || modelVerified) && prompt.trim().length > 0;
 
   /** Pinned servers are remembered across restarts; a failed save keeps the choice for now. */
   function rememberPin(id: string | null) {
@@ -441,6 +490,12 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
       const running = turn.running && !isTerminal(event);
       return items === turn.items && running === turn.running ? turn : { ...turn, items, running };
     });
+    if (event.type === 'toolFinished' && 'taskId' in event && typeof event.taskId === 'string') {
+      void taskTimeline(event.taskId).then((executions) => {
+        const execution = executions.find((item) => item.id === event.executionId);
+        if (execution) updateTurn(id, (turn) => ({ ...turn, items: setExecutionOutput(turn.items, execution) }));
+      }).catch(() => undefined);
+    }
   }
 
   useEffect(() => () => {
@@ -519,6 +574,7 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
       error: null,
     }));
     const history = conversation();
+    promptNavigation.current = null;
     setTurns((prev) => [...prev, ...newTurns]);
     setPrompt('');
     // Explicit mentions apply to this message only. The chat server stays.
@@ -567,6 +623,7 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
   }
 
   function resetComposer() {
+    promptNavigation.current = null;
     setPrompt('');
     setHosts([]);
     setDraftMentions([]);
@@ -707,7 +764,7 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
           </p>
         )}
         {(providers.length === 0 || (messageHosts.length > 0 && !modelVerified)) && (
-          <div className="banner" data-tone="warning" style={{ maxWidth: 820, margin: '0 auto 0.6rem' }}>
+          <div className="banner assistant-warning" data-tone="warning">
             <AlertIcon />
             <span className="grow">
               {providers.length === 0
@@ -716,16 +773,18 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
                   ? `Server tasks need the model tested for tool calling (${provider?.modelId}).`
                   : 'Working on a server needs a provider whose tool calling test passed.'}
             </span>
-            {providers.length > 0 && hosts.length === 0 && contextHost && (
-              <button type="button" className="btn btn-sm" onClick={() => chooseContext(null)}>
-                Chat without server
-              </button>
-            )}
-            {onOpenProviders && (
-              <button type="button" className="btn btn-sm" onClick={onOpenProviders}>
-                Open Providers
-              </button>
-            )}
+            <span className="assistant-warning-actions">
+              {providers.length > 0 && hosts.length === 0 && contextHost && (
+                <button type="button" className="btn btn-sm" onClick={() => chooseContext(null)}>
+                  Chat without server
+                </button>
+              )}
+              {onOpenProviders && (
+                <button type="button" className="btn btn-sm" onClick={onOpenProviders}>
+                  Open Providers
+                </button>
+              )}
+            </span>
           </div>
         )}
         <div className="composer">
@@ -846,6 +905,7 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
           <textarea
             ref={textareaRef}
             aria-label="Request"
+            title="↑ / ↓ at the first / last line: browse sent messages"
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
             onKeyDown={onPromptKeyDown}
@@ -856,43 +916,31 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
             <button type="button" className="icon-btn" aria-label="Mention a host" title="Ask about another host for this message (@)" onClick={insertAt}>
               <AtIcon size={14} />
             </button>
-            <select
-              aria-label="Provider"
-              className="model-select provider-choice"
+            <ComposerPicker
+              label="Provider"
+              className="provider-choice"
               value={providerId}
-              onChange={(e) => chooseProvider(e.target.value)}
               disabled={running}
-            >
-              {providers.length === 0 && <option value="">No providers</option>}
-              {providers.length > 0 && providerId === '' && (
-                <option value="" disabled>
-                  Choose a provider
-                </option>
-              )}
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.toolCalling.status === 'verified' ? '' : ' (chat only)'}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Model"
-              className="model-select model-choice"
-              value={modelId}
-              onChange={(e) => chooseModel(e.target.value)}
-              disabled={!provider || modelsLoading || running || models.length === 0}
+              options={providers.map((p) => ({
+                value: p.id,
+                label: p.name,
+                detail: p.toolCalling.status === 'verified' ? 'Server tools ready' : 'Chat only',
+              }))}
+              onChange={chooseProvider}
+            />
+            <ComposerPicker
+              label="Model"
               title={modelsError ? `Could not refresh models: ${modelsError}` : undefined}
-            >
-              {!provider && <option value="">No model</option>}
-              {provider && modelsLoading && <option value={modelId}>Loading models…</option>}
-              {provider && !modelsLoading && models.length === 0 && <option value="">No models available</option>}
-              {models.map((model) => (
-                <option key={model} value={model}>
-                  {model}{model === provider?.modelId && provider.toolCalling.status === 'verified' ? ' · server ready' : ''}
-                </option>
-              ))}
-            </select>
+              className="model-choice"
+              value={modelId}
+              disabled={!provider || modelsLoading || running || models.length === 0}
+              options={models.map((model) => ({
+                value: model,
+                label: model,
+                detail: model === provider?.modelId && provider.toolCalling.status === 'verified' ? 'Server tools ready' : undefined,
+              }))}
+              onChange={chooseModel}
+            />
             <span className="grow" />
             {running ? (
               <button type="button" className="btn btn-danger send-btn" aria-label="Stop" title="Stop all server tasks" onClick={stop} disabled={!runningTasks.length}>
@@ -1102,13 +1150,14 @@ function StatusBadge({ item }: { item: ToolItem }) {
   );
 }
 
-/** One quiet line per command: what ran and how it ended. Output stays in History. */
+/** Keep the result attached to the command it belongs to. */
 function Activity({ item }: { item: ToolItem }) {
   const done = item.status === 'completed';
   const bad = ['failed', 'denied', 'timed_out', 'cancelled', 'interrupted'].includes(item.status);
   const pending = item.status === 'proposed';
   return (
-    <div className="activity" aria-label="Command" data-tone={done ? 'success' : bad ? 'danger' : undefined}>
+    <div className="command-activity" aria-label="Command">
+    <div className="activity" data-tone={done ? 'success' : bad ? 'danger' : undefined}>
       <span className="mark">
         {pending ? <span className="spinner" role="status" aria-label="Running command" style={{ width: 12, height: 12 }} /> : done ? <CheckIcon size={11} /> : bad ? <CloseIcon size={11} /> : <TerminalIcon size={11} />}
       </span>
@@ -1121,7 +1170,20 @@ function Activity({ item }: { item: ToolItem }) {
         </span>
       )}
     </div>
+    <CommandOutput item={item} />
+    </div>
   );
+}
+
+function CommandOutput({ item }: { item: ToolItem | null }) {
+  if (!item || (item.stdoutPreview === undefined && item.stderrPreview === undefined)) return null;
+  return <details className="activity-output">
+    <summary>Output</summary>
+    {item.outputTruncated && <p className="muted">Output was truncated.</p>}
+    {item.stdoutPreview && <pre>{item.stdoutPreview}</pre>}
+    {item.stderrPreview && <pre data-tone="danger">{item.stderrPreview}</pre>}
+    {!item.stdoutPreview && !item.stderrPreview && <p className="muted">No output captured.</p>}
+  </details>;
 }
 
 function ApprovalCard({
@@ -1150,7 +1212,7 @@ function ApprovalCard({
     >
       <div className="tool-head">
         <ShieldIcon size={13} />
-        <span>
+        <span className="tool-title">
           Run this command{asRoot ? ' as root' : ''} on {hostLabel ?? 'the host'}?
         </span>
         {asRoot && (
@@ -1158,12 +1220,12 @@ function ApprovalCard({
             root
           </span>
         )}
-        <span className="grow" />
         {status && item.state === 'approved' && <StatusBadge item={status} />}
       </div>
       <pre className="tool-cmd">
         <code>{item.command}</code>
       </pre>
+      <CommandOutput item={status} />
       {needsPassword && open && <SudoPassword approvalId={item.approvalId} onChange={setSudo} />}
       {asRoot && !needsPassword && open && (
         <p className="sudo-note">This host's sudo does not ask for a password.</p>

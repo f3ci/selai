@@ -14,6 +14,7 @@ import { useSshHosts } from './useSshHosts';
 import { Drawer, Dialog } from '../ui/Overlay';
 import { HostKeyDialog } from '../ui/HostKeyDialog';
 import { Field } from '../ui/Field';
+import { ThemedSelect } from '../ui/ThemedSelect';
 import { PlusIcon, EditIcon, TrashIcon, ForwardIcon, PlayIcon, StopIcon, CopyIcon } from '../ui/icons';
 
 const MODE_INFO = {
@@ -370,13 +371,8 @@ function ForwardEditor({
           />
         </Field>
         <Field label="SSH server">
-          <select required value={form.hostId} onChange={(e) => setForm({ ...form, hostId: e.target.value })}>
-            {hosts.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.label} · {h.username}@{h.hostname}
-              </option>
-            ))}
-          </select>
+          <ThemedSelect label="SSH server" required value={form.hostId} options={hosts.map((h) => ({ value: h.id, label: `${h.label} · ${h.username}@${h.hostname}` }))}
+            onChange={(value) => setForm({ ...form, hostId: value })} />
         </Field>
         <fieldset className="mode-picker">
           <legend>Forwarding mode</legend>

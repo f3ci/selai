@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as ipc from '../ipc';
 import { SshKeysPage } from './SshKeysPage';
+import { chooseSelectValue } from '../ui/selectTestUtils';
 
 const key: ipc.SshKeyView = { id: 'one', name: 'Work laptop', algorithm: 'ssh-ed25519',
   publicKey: 'ssh-ed25519 AAAA-demo-public-key', fingerprintSha256: 'SHA256:demo', createdAtMs: 1 };
@@ -17,9 +18,9 @@ describe('SSH Keys', () => {
       await screen.findByText('No SSH keys yet');
       fireEvent.click(screen.getByRole('button', { name: 'Generate key' }));
       const dialog = screen.getByRole('dialog');
-      expect(within(dialog).getByLabelText('Algorithm')).toHaveValue('ed25519');
+      expect(within(dialog).getByRole('combobox', { name: 'Algorithm' })).toHaveAttribute('aria-valuetext', 'Ed25519');
       fireEvent.change(within(dialog).getByLabelText('Key name'), { target: { value: 'My key' } });
-      fireEvent.change(within(dialog).getByLabelText('Algorithm'), { target: { value: algorithm } });
+      chooseSelectValue('Algorithm', algorithm);
       fireEvent.click(within(dialog).getByRole('button', { name: 'Generate key' }));
       await waitFor(() => expect(generate).toHaveBeenCalledWith('My key', algorithm));
     },
@@ -31,7 +32,7 @@ describe('SSH Keys', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generate key' }));
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText('Key name'), { target: { value: ' Work laptop ' } });
-    fireEvent.change(within(dialog).getByLabelText('Algorithm'), { target: { value: 'ecdsa-p384' } });
+    chooseSelectValue('Algorithm', 'ecdsa-p384');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Generate key' }));
     await screen.findByRole('heading', { name: key.name });
     expect(generate).toHaveBeenCalledWith('Work laptop', 'ecdsa-p384');
@@ -55,6 +56,28 @@ describe('SSH Keys', () => {
     await waitFor(() => expect(importKey).toHaveBeenCalledWith('Imported key', btoa('demo-key'), 'demo-passphrase'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.queryByDisplayValue('demo-passphrase')).not.toBeInTheDocument();
+  });
+
+  it('opens the native ~/.ssh picker and imports extensionless key files directly into the vault', async () => {
+    const importLocal = vi.spyOn(ipc, 'sshKeyImportFromFile').mockResolvedValue(key);
+    render(<SshKeysPage visible />);
+    fireEvent.click(screen.getByRole('button', { name: 'Import key' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Key name'), { target: { value: 'Work key' } });
+    fireEvent.change(within(dialog).getByLabelText('Key passphrase'), { target: { value: 'passphrase' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Choose from ~/.ssh' }));
+    await waitFor(() => expect(importLocal).toHaveBeenCalledWith('Work key', 'passphrase'));
+    expect(await screen.findByRole('heading', { name: key.name })).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('passphrase')).not.toBeInTheDocument();
+  });
+
+  it('scans ~/.ssh, imports discovered keys, and reports encrypted or unsupported files', async () => {
+    vi.spyOn(ipc, 'sshKeyScanLocal').mockResolvedValue({ imported: [key], alreadySaved: 1, skipped: 2 });
+    render(<SshKeysPage visible />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Scan ~/.ssh' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Imported 1 key. 1 already saved. 2 unsupported or encrypted files skipped; import encrypted keys individually with their passphrase.');
+    expect(screen.getByRole('heading', { name: key.name })).toBeInTheDocument();
+    expect(ipc.sshKeyScanLocal).toHaveBeenCalledOnce();
   });
 
   it('shows a deletion conflict without removing a key that is assigned to a profile', async () => {

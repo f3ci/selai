@@ -547,6 +547,14 @@ impl Services {
             task,
             host,
             host_label: host_record.label.clone(),
+            host_context: if host_record.is_local {
+                format!("{} (this computer, local shell)", host_record.label)
+            } else {
+                format!(
+                    "{} ({}@{}:{})",
+                    host_record.label, host_record.username, host_record.hostname, host_record.port
+                )
+            },
             provider: Some(provider),
             settings,
             api_key,

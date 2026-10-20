@@ -81,6 +81,9 @@ export interface SshKeyView { id: string; name: string; algorithm: string; publi
 export function sshKeyList(): Promise<SshKeyView[]> { return invoke<SshKeyView[]>('ssh_key_list'); }
 export function sshKeyGenerate(name: string, algorithm: string): Promise<SshKeyView> { return invoke<SshKeyView>('ssh_key_generate', { name, algorithm }); }
 export function sshKeyImport(name: string, privateKeyBase64: string, passphrase?: string): Promise<SshKeyView> { return invoke<SshKeyView>('ssh_key_import', { name, privateKeyBase64, passphrase: passphrase ?? null }); }
+export function sshKeyImportFromFile(name: string, passphrase?: string): Promise<SshKeyView | null> { return invoke<SshKeyView | null>('ssh_key_import_from_file', { name, passphrase: passphrase ?? null }); }
+export interface SshKeyScanResult { imported: SshKeyView[]; alreadySaved: number; skipped: number }
+export function sshKeyScanLocal(): Promise<SshKeyScanResult> { return invoke<SshKeyScanResult>('ssh_key_scan_local'); }
 export function sshKeyDelete(id: string): Promise<void> { return invoke<void>('ssh_key_delete', { id }); }
 
 export interface ObservedKey {

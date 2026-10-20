@@ -18,6 +18,7 @@ import {
   type TransferInput,
 } from '../network';
 import { useSshHosts } from './useSshHosts';
+import { ThemedSelect } from '../ui/ThemedSelect';
 import { HostKeyDialog } from '../ui/HostKeyDialog';
 import { Dialog } from '../ui/Overlay';
 import {
@@ -232,19 +233,8 @@ export function SftpPage({ visible }: { visible: boolean }) {
           <h1>SFTP</h1>
         </div>
         <div className="sftp-connection">
-          <select
-            aria-label="SFTP server"
-            value={hostId}
-            disabled={Boolean(connection) || connecting}
-            onChange={(e) => setHostId(e.target.value)}
-          >
-            <option value="">Choose SSH server</option>
-            {hosts.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.label}
-              </option>
-            ))}
-          </select>
+          <ThemedSelect label="SFTP server" value={hostId} disabled={Boolean(connection) || connecting}
+            options={[{ value: '', label: 'Choose SSH server' }, ...hosts.map((h) => ({ value: h.id, label: h.label }))]} onChange={setHostId} />
           <span className="network-status" data-state={connection ? 'running' : 'stopped'}>
             <i />
             {connection ? 'Connected' : connecting ? 'Connecting…' : 'Disconnected'}
@@ -299,14 +289,9 @@ export function SftpPage({ visible }: { visible: boolean }) {
         </div>
         <label className="sftp-conflicts">
           Existing files
-          <select
-            aria-label="Existing files"
-            value={overwrite ? 'replace' : 'skip'}
-            onChange={(e) => setOverwrite(e.target.value === 'replace')}
-          >
-            <option value="skip">Skip matching files</option>
-            <option value="replace">Replace matching files</option>
-          </select>
+          <ThemedSelect label="Existing files" value={overwrite ? 'replace' : 'skip'}
+            options={[{ value: 'skip', label: 'Skip matching files' }, { value: 'replace', label: 'Replace matching files' }]}
+            onChange={(value) => setOverwrite(value === 'replace')} />
         </label>
       </div>
       <div className="file-panels">

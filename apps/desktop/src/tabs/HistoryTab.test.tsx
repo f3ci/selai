@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as ipc from '../ipc';
+import { chooseSelectValue } from '../ui/selectTestUtils';
 import { HistoryTab, HostHistoryTab } from './HistoryTab';
 
 afterEach(() => vi.restoreAllMocks());
@@ -125,7 +126,26 @@ describe('HostHistoryTab', () => {
 
     expect(await showCommands()).toBeInTheDocument();
     expect(query).toHaveBeenCalledWith('h1', { states: [] , sinceMs: null, untilMs: null }, undefined);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Host' }));
     expect(screen.getByRole('option', { name: 'retired-db (archived)' })).toBeInTheDocument();
+  });
+
+  it('loads every command page with one action and supports oldest-first sorting', async () => {
+    const older = execution({ id: 'older', commandRedacted: 'older command', createdAtMs: 1 });
+    const query = mockHistory();
+    query.mockImplementation(async (_hostId, _filter, cursor) => cursor === 'next-page'
+      ? { items: [older], nextCursor: null }
+      : { items: [execution()], nextCursor: 'next-page' });
+    render(<HostHistoryTab visible />);
+    await waitFor(() => expect(query).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: 'Commands' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Load all' }));
+    expect(await screen.findByText('older command')).toBeInTheDocument();
+    expect(query).toHaveBeenCalledWith('h1', { states: [], sinceMs: null, untilMs: null }, 'next-page');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Sort by' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Oldest command first' }));
+    const rows = screen.getByRole('table').querySelectorAll('tbody tr');
+    expect(rows[0]).toHaveTextContent('older command');
   });
 
   it('loads again when the tab is shown, so runs finished while hidden appear', async () => {
@@ -261,6 +281,50 @@ function mockSessions(turns = [savedTurn('t1')]) {
 }
 
 describe('Session history', () => {
+  it('sorts sessions by activity and loads all matching sessions with one action', async () => {
+    const { list, get } = mockSessions();
+    list.mockResolvedValue(Array.from({ length: 65 }, (_, index) => ({
+      ...session, id: `s${index}`, title: `Session ${index}`, updatedAtMs: index + 1,
+    })));
+    render(<HistoryTab visible />);
+    const sessions = screen.getByRole('list', { name: 'Sessions' });
+    await waitFor(() => expect(within(sessions).getAllByRole('listitem')).toHaveLength(30));
+    expect(within(sessions).getAllByRole('button')[0]).toHaveTextContent('Session 64');
+    fireEvent.click(screen.getByRole('button', { name: 'Load more sessions' }));
+    expect(within(sessions).getAllByRole('listitem')).toHaveLength(60);
+    fireEvent.click(screen.getByRole('button', { name: 'Load all sessions' }));
+    expect(within(sessions).getAllByRole('listitem')).toHaveLength(65);
+    expect(screen.queryByRole('button', { name: 'Load all sessions' })).not.toBeInTheDocument();
+    chooseSelectValue('Sort sessions by', 'oldest');
+    expect(within(sessions).getAllByRole('button')[0]).toHaveTextContent('Session 0');
+    expect(within(sessions).getAllByRole('listitem')).toHaveLength(30);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search sessions' }), { target: { value: 'Session 6' } });
+    expect(within(sessions).getAllByRole('listitem')).toHaveLength(6);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('shows newest requests and commands first and can switch to oldest first', async () => {
+    const { timeline } = mockSessions([
+      savedTurn('old', 'h1', { taskPrompt: 'Earlier request' }),
+      savedTurn('new', 'h1', { taskPrompt: 'Recent request' }),
+    ]);
+    timeline.mockImplementation(async (id) => [
+      execution({ id: `${id}-1`, taskId: id, commandRedacted: `${id} earlier command`, createdAtMs: 1 }),
+      execution({ id: `${id}-2`, taskId: id, commandRedacted: `${id} latest command`, createdAtMs: 2 }),
+    ]);
+    render(<HistoryTab visible />);
+    fireEvent.click(await screen.findByText(session.title));
+    await screen.findByText('new latest command');
+    const requests = screen.getByRole('list', { name: 'Session requests' });
+    const firstRequest = () => within(requests).getAllByRole('listitem').filter((item) => item.classList.contains('session-request'))[0]!;
+    expect(within(firstRequest()).getByRole('heading')).toHaveTextContent('Recent request');
+    expect(within(firstRequest()).getAllByRole('button')[0]).toHaveTextContent('new latest command');
+    chooseSelectValue('Sort by', 'oldest');
+    expect(within(firstRequest()).getByRole('heading')).toHaveTextContent('Earlier request');
+    expect(within(firstRequest()).getAllByRole('button')[0]).toHaveTextContent('old earlier command');
+    expect(timeline).toHaveBeenCalledTimes(2);
+  });
+
   it('opens on searchable session titles and loads no transcripts or command records before selection', async () => {
     const { get, timeline } = mockSessions();
     render(<HistoryTab visible />);
@@ -305,8 +369,8 @@ describe('Session history', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('pages requests and limits concurrent command lookups to four', async () => {
-    const { timeline } = mockSessions(Array.from({ length: 13 }, (_, index) => savedTurn(`t${index}`)));
+  it('loads all remaining request pages with one action and limits concurrent command lookups to four', async () => {
+    const { timeline } = mockSessions(Array.from({ length: 27 }, (_, index) => savedTurn(`t${index}`)));
     let resolveBatch: (() => void)[] = [];
     let active = 0;
     let peak = 0;
@@ -318,6 +382,8 @@ describe('Session history', () => {
     render(<HistoryTab visible />);
     fireEvent.click(await screen.findByText(session.title));
     await waitFor(() => expect(timeline).toHaveBeenCalledTimes(4));
+    expect(timeline).toHaveBeenNthCalledWith(1, 't26');
+    expect(screen.getByRole('button', { name: 'Load all requests' })).toBeDisabled();
     for (let batch = 0; batch < 3; batch++) {
       await act(async () => {
         const complete = resolveBatch;
@@ -328,10 +394,19 @@ describe('Session history', () => {
     expect(peak).toBe(4);
     expect(timeline).toHaveBeenCalledTimes(12);
     expect(screen.getAllByText('No command execution recorded for this request.')).toHaveLength(12);
-    fireEvent.click(screen.getByRole('button', { name: 'Load more requests' }));
-    await waitFor(() => expect(timeline).toHaveBeenCalledTimes(13));
-    await act(async () => resolveBatch.forEach((resolve) => resolve()));
-    expect(screen.getAllByText('No command execution recorded for this request.')).toHaveLength(13);
+    fireEvent.click(screen.getByRole('button', { name: 'Load all requests' }));
+    await waitFor(() => expect(timeline).toHaveBeenCalledTimes(16));
+    for (let batch = 0; batch < 4; batch++) {
+      await act(async () => {
+        const complete = resolveBatch;
+        resolveBatch = [];
+        complete.forEach((resolve) => resolve());
+      });
+    }
+    expect(peak).toBe(4);
+    expect(timeline).toHaveBeenCalledTimes(27);
+    expect(screen.getAllByText('No command execution recorded for this request.')).toHaveLength(27);
+    expect(screen.queryByRole('button', { name: 'Load all requests' })).not.toBeInTheDocument();
   });
 
   it('reloads when shown and refreshes session commands after returning from a hidden tab', async () => {
