@@ -7,6 +7,17 @@ export interface AppInfo {
   version: string;
 }
 
+export interface ReleaseUpdate {
+  version: string;
+  notes: string;
+  publishedAt: string | null;
+  releaseUrl: string;
+  download: { name: string; size: number; url: string } | null;
+}
+export interface UpdateCheck { currentVersion: string; update: ReleaseUpdate | null }
+export function updateCheck(): Promise<UpdateCheck> { return invoke<UpdateCheck>('update_check'); }
+export function updateOpen(target: 'release' | 'download'): Promise<void> { return invoke<void>('update_open', { target }); }
+
 export interface StorageStatus {
   schemaVersion: number;
   journalMode: string;

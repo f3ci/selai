@@ -5,6 +5,7 @@ import { SelaiLogo } from './ui/SelaiLogo';
 import { ThemedSelect } from './ui/ThemedSelect';
 import { VaultWorkspacePhase } from './vaultWorkspace';
 import { WindowControls } from './App';
+import { UpdateButton } from './updates';
 import './vault.css';
 
 export function VaultGate({ children }: { children: ReactNode }) {
@@ -140,7 +141,7 @@ export function VaultGate({ children }: { children: ReactNode }) {
     {(unlocked || locking || standby) && !recovery && <VaultWorkspacePhase.Provider value={unlocked ? 'unlocked' : locking ? 'locking' : 'locked'}><div hidden={!unlocked} inert={!unlocked} className="vault-workspace">{children}</div></VaultWorkspacePhase.Provider>}
     {unlocked && status.cleanupPending && !recovery && <button className="vault-cleanup-banner" onClick={() => setSettings(true)}>Legacy data cleanup needs attention · Open Security</button>}
     {(!unlocked || recovery) && <div className="vault-screen">
-      <header className="workspace-head" data-tauri-drag-region><SelaiLogo size={27} /><span data-tauri-drag-region>Selai</span><span className="grow" data-tauri-drag-region /><WindowControls /></header>
+      <header className="workspace-head" data-tauri-drag-region><SelaiLogo size={27} /><span data-tauri-drag-region>Selai</span><span className="grow" data-tauri-drag-region /><UpdateButton /><WindowControls /></header>
       <main className="vault-center"><section className="vault-card">
         <SelaiLogo size={56} />
         {!status ? <><h1>Opening Selai</h1>{feedback}<button onClick={() => void refresh()}>Retry</button></> : recovery ? <>

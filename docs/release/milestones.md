@@ -152,7 +152,7 @@ during review, not by a failing test.
 
 | Task | Status | Evidence | Gaps |
 |---|---|---|---|
-| S-050 Installer packaging and signing pipeline | partial | `.github/workflows/release.yml` builds Linux (deb, AppImage), Windows and macOS bundles. Checksums (`SHA256SUMS`), CycloneDX SBOMs (Rust and frontend), and build provenance on tags. `actionlint` and `shellcheck` clean. `docs/release/packaging.md`. SBOMs generated locally from a clean archive. | Workflow not run on GitHub. Windows and macOS installers not built or installed here. Not signed or notarised: signing runs only when secrets are set. `.ps1` scripts not executed. No auto-updater (by design). |
+| S-050 Installer packaging and signing pipeline | partial | `.github/workflows/release.yml` builds Linux (deb, AppImage), Windows and macOS bundles. `v0.3.1` published all platform installers, checksums (`SHA256SUMS`), CycloneDX SBOMs, and build provenance. `docs/release/packaging.md`. | Installers are not signed or notarised unless optional signing secrets are configured. In-app installation is not implemented; release discovery and browser downloads are included in 0.3.2. |
 | S-051 Acceptance matrix and security signoff | partial | `docs/release/acceptance-matrix.md`: every `T-*` case from the spec, with its status. | Live-provider checks skipped (no keys). Several cases partial or not implemented (T-AUDIT-002, T-SSH-005, T-AGENT-006 process kill, T-AUDIT-003 UI backpressure). Maintainer security signoff not done. |
 | S-052 Tag and publish v1.0.0 | not done | — | Waiting for the operator's confirmation. Tagging and publishing are outward-facing. |
 

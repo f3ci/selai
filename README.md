@@ -5,7 +5,7 @@
 <p align="center"><strong>A desktop SSH workbench with AI assistance, tunnels, and proxies.</strong><br>
 SSH profiles, terminals, AI chat, port forwarding, and proxies in one app. You choose where the assistant may work and approve its commands, with optional root approval for one request on one host.</p>
 
-<p align="center"><sub>Preview 0.3.1 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
+<p align="center"><sub>Preview 0.3.2 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
 
 <p align="center">
   <a href="#quick-demo">Demo</a> ·
@@ -37,12 +37,22 @@ never included in requests to an AI provider.
 - **Everything is recorded.** Each request, command, outcome, and token count is
   saved to History, with an audit record written before remote execution.
 
-> **Version 0.3.1 is a preview.** Automated coverage includes Linux SSH and agent
+> **Version 0.3.2 is a preview.** Automated coverage includes Linux SSH and agent
 > flows with an OpenSSH fixture and mock AI providers, plus Windows encryption
 > and vault checks in the release build profile. Full interactive SSH and live
 > provider coverage across all platforms is not established. See [current milestone evidence](docs/release/milestones.md)
 > and [known security limits](SECURITY.md) before using Selai with sensitive
 > systems.
+
+## New in 0.3.2
+
+- Selai checks GitHub Releases for newer versions and shows the release notes
+  and installer for this computer. The check sends no vault data or GitHub token.
+- **Download update** opens the installer in your browser. Save your work and
+  close Selai before running it; the app does not install updates in the background.
+
+See the [0.3.2 release notes](docs/release/RELEASE_NOTES.md) and
+[update check and installer details](docs/release/packaging.md#update-checks-in-the-desktop-app).
 
 ## New in 0.3.1
 
@@ -426,7 +436,7 @@ Keep the old folder until you have verified the restored hosts and history.
 
 ### Install a preview build
 
-Download [Selai 0.3.1 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.3.1).
+Download [Selai 0.3.2 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.3.2).
 Builds are also available from the **Release packaging** workflow artifacts.
 Packages are provided for:
 

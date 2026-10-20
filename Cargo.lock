@@ -4912,7 +4912,7 @@ dependencies = [
 
 [[package]]
 name = "selai-agent"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "selai-audit",
  "selai-domain",
@@ -4931,7 +4931,7 @@ dependencies = [
 
 [[package]]
 name = "selai-audit"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "regex",
  "selai-domain",
@@ -4942,13 +4942,14 @@ dependencies = [
 
 [[package]]
 name = "selai-desktop"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "base64 0.22.1",
  "fs2",
  "keepass",
  "portable-pty",
  "rand 0.10.3",
+ "reqwest",
  "rfd",
  "russh",
  "russh-sftp",
@@ -4963,6 +4964,7 @@ dependencies = [
  "selai-storage",
  "selai-testkit",
  "selai-vault",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -4972,13 +4974,14 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-util",
+ "webbrowser",
  "wiremock",
  "zeroize",
 ]
 
 [[package]]
 name = "selai-domain"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4989,7 +4992,7 @@ dependencies = [
 
 [[package]]
 name = "selai-llm"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -5005,14 +5008,14 @@ dependencies = [
 
 [[package]]
 name = "selai-platform"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "selai-policy"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "selai-domain",
  "serde_json",
@@ -5022,7 +5025,7 @@ dependencies = [
 
 [[package]]
 name = "selai-secrets"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "keyring",
  "selai-domain",
@@ -5032,7 +5035,7 @@ dependencies = [
 
 [[package]]
 name = "selai-ssh"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "base64 0.22.1",
  "openssl",
@@ -5049,7 +5052,7 @@ dependencies = [
 
 [[package]]
 name = "selai-storage"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "rusqlite",
  "selai-audit",
@@ -5062,14 +5065,14 @@ dependencies = [
 
 [[package]]
 name = "selai-testkit"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "selai-vault"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm 0.10.3",
@@ -6696,6 +6699,22 @@ dependencies = [
  "phf_codegen",
  "string_cache",
  "string_cache_codegen",
+]
+
+[[package]]
+name = "webbrowser"
+version = "1.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62c35be770821a214dbc362fc26908c853e776c0004294d0b10b8a6bad582f94"
+dependencies = [
+ "jni 0.22.4",
+ "log",
+ "ndk-context",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "url",
+ "web-sys",
 ]
 
 [[package]]

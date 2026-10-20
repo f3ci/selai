@@ -19,6 +19,7 @@ pub mod sftp_service;
 pub mod terminal_flow;
 #[cfg(test)]
 mod terminal_tests;
+mod updates;
 pub mod vault_service;
 
 use std::sync::Arc;
@@ -44,6 +45,7 @@ impl AppState {
 
 pub fn run() {
     let result = tauri::Builder::default()
+        .manage(updates::UpdateService::default())
         .setup(|app| {
             selai_platform::start();
             let vault = match app.path().app_data_dir() {
@@ -79,6 +81,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            updates::update_check,
+            updates::update_open,
             network_commands::proxy_list,
             network_commands::forward_watch,
             network_commands::transfer_watch,

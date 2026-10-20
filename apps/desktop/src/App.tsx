@@ -13,6 +13,7 @@ import { VaultGate } from './VaultGate';
 import { VaultWorkspacePhase } from './vaultWorkspace';
 import { applyTheme, readThemePreference, THEME_KEY, THEME_OPTIONS, useResolvedTheme, type Theme } from './theme';
 import { ThemedSelect } from './ui/ThemedSelect';
+import { UpdateButton, UpdateProvider, UpdateVersion } from './updates';
 
 // xterm.js is large; load it only when a terminal is first needed.
 const TerminalStack = lazy(() => import('./tabs/TerminalTab').then((m) => ({ default: m.TerminalStack })));
@@ -133,7 +134,7 @@ function Resizer({
   );
 }
 
-export function App() { return <VaultGate><Workbench /></VaultGate>; }
+export function App() { return <UpdateProvider><VaultGate><Workbench /></VaultGate></UpdateProvider>; }
 
 export function Workbench() {
   const vaultPhase = useContext(VaultWorkspacePhase);
@@ -333,6 +334,7 @@ export function Workbench() {
           <span className="dot" data-status={connectedSessions > 0 ? 'ok' : undefined} />
           {connectedSessions} connected
         </span>
+        <UpdateButton />
         <button type="button" className="btn btn-sm" title="Vault security settings" onClick={() => window.dispatchEvent(new Event('selai:security'))}>Security</button>
         <button type="button" className="btn btn-sm" title="Lock vault" onClick={() => window.dispatchEvent(new Event('selai:lock'))}>Lock</button>
         <button
@@ -491,7 +493,7 @@ export function Workbench() {
         <span className="grow" />
         <span className="status-item">Theme</span>
         <ThemedSelect label="Theme" className="theme-choice" value={theme} options={THEME_OPTIONS} onChange={(value) => setTheme(value as Theme)} />
-        <span className="status-item">{info ? `Selai ${info.version}` : ''}</span>
+        <UpdateVersion version={info?.version} />
       </footer>
     </div>
   );

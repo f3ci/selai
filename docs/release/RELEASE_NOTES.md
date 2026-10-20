@@ -7,6 +7,22 @@ fixtures and mock providers. Windows packaging also checks encryption and the
 vault in the release build profile. This is not complete interactive coverage
 of every platform and live AI provider. The installers are not code-signed.
 
+## New in 0.3.2
+
+This preview adds update discovery and links to the matching installer on GitHub.
+
+- **Check for releases:** Selai checks GitHub Releases at startup and from the
+  version label. When a newer numeric release is available, the app shows its
+  notes and an installer for the current platform and architecture.
+- **Download manually:** the update button opens the GitHub installer in your
+  browser. Selai stays open, so save your work and close the app before running
+  the downloaded installer. The app does not install or restart itself.
+- **No vault data in update checks:** requests use the public GitHub API without
+  a GitHub token. Release notes are rendered without active links, images or HTML.
+  Network limits or errors can be retried from the update dialog.
+
+See `docs/release/packaging.md` for update discovery and download behavior.
+
 ## New in 0.3.1
 
 This preview adds theme choices, local SSH key import, prompt recall, and keeps

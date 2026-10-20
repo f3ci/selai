@@ -117,9 +117,30 @@ Notes:
 - Signing and notarization were not run. They are configured but unverified
   (see the table below).
 
+## Update checks in the desktop app
+
+Selai checks the public GitHub Releases API once when it starts, including on
+the vault screen. A newer version adds an **Update available** button to the
+top right. The dialog shows the installed and available versions, release notes,
+and a download for the current OS and architecture. The version in the workspace
+status bar opens a manual check. Network failures stay quiet until the user opens
+the dialog; a failed check retries when the device comes back online.
+
+Version comparison uses semantic versions, never release publication order.
+Numeric 0.x releases are included even though this workflow marks them as
+prereleases; draft and alpha/beta/RC releases are excluded. Checks use the latest
+100 published releases and a 60-second in-process cache. No GitHub token or
+vault data is sent. GitHub's unauthenticated API limits still apply.
+
+**Download update** opens the matching installer in the default browser. The app
+stays open; the user saves work and closes Selai before running the downloaded
+installer. Missing architecture assets fall back to release details. This uses
+the existing release installers and requires no additional release secrets.
+
 ## Not included
 
-- **Auto-updater.** No updater artifacts (`.sig`, `latest.json`) are produced and
+- **In-app installation.** Update discovery and browser downloads are included.
+  No updater artifacts (`.sig`, `latest.json`) are produced and
   `TAURI_SIGNING_PRIVATE_KEY` is not used. Adding the updater needs a signing key
   pair and a hosting decision.
 - **Automatic publication from a manual workflow run.** Manual runs produce
@@ -129,17 +150,16 @@ Notes:
 
 | Item | Status |
 | --- | --- |
-| Windows build (`.msi`, `.exe`) | Not run. No Windows runner or Windows toolchain here. |
-| macOS build (`.dmg`, `.app.zip`) | Not run. No macOS runner here. |
-| Linux build (`.deb`, `.AppImage`) | Not run end to end. The workflow YAML and helper scripts were checked, but no Tauri bundle was built. |
-| Windows signing (`sign-windows.ps1`) | Not run. Not configured in this repo. |
-| Apple signing and notarization | Not run. Not configured in this repo. |
-| `signtool` path discovery on `windows-latest` | Assumed, not checked. |
-| `--config` file path handling in the Tauri CLI | Assumed to be relative to `apps/desktop`. Not run. |
-| `-- --locked` passed through to cargo by `pnpm tauri build` | Assumed. Not run. |
-| Attestation (`attest` job) | Not run. Needs a tag push. |
-| SBOM job on a clean runner | Local run only, on a clean `git archive` of HEAD with `cargo-cyclonedx` 0.5.9 and cdxgen 12.8.6. |
-| Auto-updater | Not included. |
+| Windows build (`.msi`, `.exe`) | Built successfully by the GitHub release workflow for `v0.3.1`; the native vault checks passed before upload. |
+| macOS build (`.dmg`, `.app.zip`) | Built successfully by the GitHub release workflow for `v0.3.1`. |
+| Linux build (`.deb`, `.AppImage`) | Built successfully by the GitHub release workflow for `v0.3.1`. |
+| Windows signing (`sign-windows.ps1`) | Optional and runs only when the `WINDOWS_CERTIFICATE` secret is configured. |
+| Apple signing and notarization | Optional and runs only when the Apple signing secrets are configured. |
+| `signtool` path discovery on `windows-latest` | Windows release workflow completed successfully for `v0.3.1`. |
+| `-- --locked` passed through to cargo by `pnpm tauri build` | Confirmed by successful release builds on all three platforms for `v0.3.1`. |
+| Attestation (`attest` job) | Build provenance completed successfully for `v0.3.1`. |
+| SBOM job on a clean runner | Completed successfully in the GitHub release workflow for `v0.3.1`. |
+| Update discovery and download | Covered by Rust and frontend tests. Installation remains a manual installer flow. |
 | Icons | `icon.png`, `icon.ico`, `icon.icns`, and platform sizes are present. The Windows and macOS bundles have not been run here. |
 
 ## Helper scripts
