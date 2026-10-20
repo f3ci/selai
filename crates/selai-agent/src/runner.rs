@@ -350,19 +350,6 @@ fn system_prompt_for_target(host_context: &str) -> String {
     )
 }
 
-#[cfg(test)]
-mod target_context_tests {
-    use super::system_prompt_for_target;
-
-    #[test]
-    fn tells_the_model_that_tools_are_connected_to_the_selected_server() {
-        let prompt = system_prompt_for_target("staging-db (ops@10.0.0.6:22)");
-        assert!(prompt.contains("Current execution target: staging-db (ops@10.0.0.6:22)"));
-        assert!(prompt.contains("Do not claim that you lack access to this target"));
-        assert!(prompt.contains("You do not have access to other servers"));
-    }
-}
-
 fn add_tokens(total: Option<u64>, turn: Option<u64>) -> Option<u64> {
     match (total, turn) {
         (t, None) => t,
@@ -1023,5 +1010,18 @@ fn fail<S: AgentStore, E: RemoteExecutor, W: ApprovalWaiter>(
         state: TaskState::Failed,
         error_code: Some(code.to_owned()),
         final_text: String::new(),
+    }
+}
+
+#[cfg(test)]
+mod target_context_tests {
+    use super::system_prompt_for_target;
+
+    #[test]
+    fn tells_the_model_that_tools_are_connected_to_the_selected_server() {
+        let prompt = system_prompt_for_target("staging-db (ops@10.0.0.6:22)");
+        assert!(prompt.contains("Current execution target: staging-db (ops@10.0.0.6:22)"));
+        assert!(prompt.contains("Do not claim that you lack access to this target"));
+        assert!(prompt.contains("You do not have access to other servers"));
     }
 }
