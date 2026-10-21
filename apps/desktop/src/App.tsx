@@ -1,3 +1,4 @@
+import { SshAuthentication } from './ui/SshAuthentication';
 import { lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -322,6 +323,7 @@ export function Workbench() {
 
   return (
     <div className="workbench">
+      <SshAuthentication />
       <header className="workspace-head" data-tauri-drag-region>
         <div className="workspace-brand" role="img" aria-label="Selai" data-tauri-drag-region>
           <SelaiLogo size={28} />

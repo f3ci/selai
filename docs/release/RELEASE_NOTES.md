@@ -7,6 +7,34 @@ fixtures and mock providers. Windows packaging also checks encryption and the
 vault in the release build profile. This is not complete interactive coverage
 of every platform and live AI provider. The installers are not code-signed.
 
+## New in 0.3.3
+
+This preview expands SSH authentication by integrating the operating system's
+OpenSSH client for methods that need live user interaction or external
+credentials.
+
+- **More authentication methods:** choose automatic/multi-factor, keyboard
+  interactive/OTP, SSH agent, OpenSSH user certificate, FIDO2/security key,
+  PKCS#11 smart card, Kerberos/GSSAPI, or host-based authentication. Availability
+  depends on the installed OpenSSH build and any required local provider, agent,
+  ticket, key, or hardware.
+- **Live authentication prompts:** enter OTPs, PINs, and other responses in a
+  host-bound dialog. Responses are single-use and expire; they are not saved in
+  profiles, logs, command arguments, or environment variables.
+- **Host-key protection:** the native backend uses an isolated known-hosts file
+  with strict verification after Selai's existing probe and trust flow. It does
+  not change the user's OpenSSH `known_hosts` file or add host-CA trust.
+- **SSH coverage:** native authentication works with terminal sessions, SFTP,
+  AI command execution, and local, dynamic, and remote forwarding. Each operation
+  opens its own OpenSSH connection, so an MFA-required server can prompt again.
+- **Profile migration:** saved SSH profiles gain an authentication-method
+  preference. Existing profiles retain their default behavior.
+
+See [SSH authentication](../ssh-authentication.md) for supported methods,
+configuration, and validation limits. Hardware tokens, PKCS#11 providers,
+Kerberos domains, and host-based trust still require testing in their respective
+environments.
+
 ## New in 0.3.2
 
 This preview adds update discovery and links to the matching installer on GitHub.

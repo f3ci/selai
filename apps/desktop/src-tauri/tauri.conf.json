@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Selai",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "identifier": "dev.selai.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",

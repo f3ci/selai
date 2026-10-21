@@ -16,6 +16,7 @@ pub mod provider_service;
 mod resource_limits;
 pub mod service;
 pub mod sftp_service;
+pub mod ssh_auth;
 pub mod terminal_flow;
 #[cfg(test)]
 mod terminal_tests;
@@ -102,6 +103,8 @@ pub fn run() {
             network_commands::transfer_list,
             network_commands::transfer_clear,
             network_commands::transfer_cancel,
+            commands::ssh_auth_watch,
+            commands::ssh_auth_answer,
             commands::app_info,
             commands::vault_status,
             commands::vault_watch,

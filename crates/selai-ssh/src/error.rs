@@ -25,6 +25,8 @@ pub enum SshError {
     UnsupportedHostKey,
     #[error("authentication failed")]
     AuthFailed,
+    #[error("OpenSSH authentication failed: {0}")]
+    NativeAuth(String),
     #[error("private key could not be loaded: {0}")]
     KeyLoad(String),
     #[error("connection closed")]
@@ -41,7 +43,7 @@ impl SelaiError for SshError {
             Self::ConnectFailed(_) | Self::Protocol(_) => ErrorCode::SshConnectFailed,
             Self::HostKeyUnknown(_) | Self::UnsupportedHostKey => ErrorCode::SshHostkeyUnknown,
             Self::HostKeyChanged { .. } => ErrorCode::SshHostkeyChanged,
-            Self::AuthFailed | Self::KeyLoad(_) => ErrorCode::SshAuthFailed,
+            Self::AuthFailed | Self::NativeAuth(_) | Self::KeyLoad(_) => ErrorCode::SshAuthFailed,
             Self::ChannelClosed => ErrorCode::SshChannelClosed,
         }
     }

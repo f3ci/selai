@@ -5,7 +5,7 @@
 <p align="center"><strong>A desktop SSH workbench with AI assistance, tunnels, and proxies.</strong><br>
 SSH profiles, terminals, AI chat, port forwarding, and proxies in one app. You choose where the assistant may work and approve its commands, with optional root approval for one request on one host.</p>
 
-<p align="center"><sub>Preview 0.3.2 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
+<p align="center"><sub>Preview 0.3.3 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
 
 <p align="center">
   <a href="#quick-demo">Demo</a> ·
@@ -37,12 +37,25 @@ never included in requests to an AI provider.
 - **Everything is recorded.** Each request, command, outcome, and token count is
   saved to History, with an audit record written before remote execution.
 
-> **Version 0.3.2 is a preview.** Automated coverage includes Linux SSH and agent
+> **Version 0.3.3 is a preview.** Automated coverage includes Linux SSH and agent
 > flows with an OpenSSH fixture and mock AI providers, plus Windows encryption
 > and vault checks in the release build profile. Full interactive SSH and live
 > provider coverage across all platforms is not established. See [current milestone evidence](docs/release/milestones.md)
 > and [known security limits](SECURITY.md) before using Selai with sensitive
 > systems.
+
+## New in 0.3.3
+
+- **More SSH authentication options:** use OpenSSH from the operating system for
+  OTP/MFA prompts, agents, user certificates, FIDO2 keys, smart cards, Kerberos,
+  or host-based authentication. Prompt answers stay transient and host-key
+  verification continues to use Selai's existing trust flow.
+- **Saved authentication preferences:** select an authentication method per SSH
+  profile. Secrets such as OTPs, PINs, and interactive answers are requested at
+  connection time and are not stored in the profile.
+
+See the [0.3.3 release notes](docs/release/RELEASE_NOTES.md) and
+[SSH authentication guide](docs/ssh-authentication.md).
 
 ## New in 0.3.2
 
@@ -151,6 +164,13 @@ provider is contacted. [Recording details and reproduction steps](docs/media/REA
 | **Encrypted vault** | Protect credentials, managed private keys, host metadata, chat, and history with one passphrase. Use automatic locking, a separate recovery key, encrypted backup/restore, encrypted history exports, and manual compaction of unused database space while idle. |
 
 ### SSH hosts and terminals
+
+Additional authentication methods include **Automatic/MFA**, **Keyboard-interactive/OTP**,
+**SSH agent**, **OpenSSH user certificate**, **FIDO2/security key**, **Smart card/PKCS#11**,
+**Kerberos/GSSAPI**, and **Host-based**. These use system OpenSSH with live
+credential dialogs and Selai's strict host-key pins. OS providers and the selected
+OpenSSH build must support the requested method. See [SSH authentication](docs/ssh-authentication.md)
+for setup, platform requirements, and validation limits.
 
 Create a profile with a label, address, port, username, and authentication
 method. Passwords and key passphrases are saved inside the encrypted vault.
@@ -436,7 +456,7 @@ Keep the old folder until you have verified the restored hosts and history.
 
 ### Install a preview build
 
-Download [Selai 0.3.2 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.3.2).
+Download [Selai 0.3.3 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.3.3).
 Builds are also available from the **Release packaging** workflow artifacts.
 Packages are provided for:
 

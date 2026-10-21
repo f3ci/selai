@@ -66,3 +66,11 @@ describe('SSH profile import', () => {
     expect(() => parseProfileTable('', 'vault.kdbx')).toThrow('KDBX');
   });
 });
+
+
+it('imports native authentication modes and refuses embedded native credentials', () => {
+  const rows = candidates('label,hostname,username,auth_method,private_key_path,password\nCert,cert.test,ops,certificate,/keys/id,\nAgent,agent.test,ops,agent,,\nMFA,mfa.test,ops,keyboard_interactive,,secret\n', 'hosts.csv');
+  expect(at(rows, 0).input).toMatchObject({ authMethod: 'certificate', privateKeyPath: '/keys/id' });
+  expect(at(rows, 1).input).toMatchObject({ authMethod: 'agent', privateKeyPath: null });
+  expect(at(rows, 2).issue).toContain('requested when connecting');
+});

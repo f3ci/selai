@@ -62,7 +62,7 @@ pub struct Forwarder {
     session: Arc<Session>,
     spec: ForwardSpec,
     listener: Option<TcpListener>,
-    remote: Option<tokio::sync::mpsc::Receiver<russh::Channel<russh::client::Msg>>>,
+    remote: Option<tokio::sync::mpsc::Receiver<crate::SshStream>>,
 }
 
 impl Forwarder {
@@ -109,7 +109,7 @@ impl Forwarder {
                         stats.connections.fetch_add(1,Ordering::Relaxed);
                         let result=async {
                             let (host,port)=if dynamic {tokio::time::timeout(Duration::from_secs(15),socks_request(&mut socket)).await.map_err(|_|SshError::ConnectTimeout)??} else {(target,port)};
-                            let channel=tokio::time::timeout(Duration::from_secs(15),session.direct_tcpip(&host,port)).await.map_err(|_|SshError::ConnectTimeout)?;
+                            let channel=tokio::time::timeout(session.channel_timeout(),session.direct_tcpip(&host,port)).await.map_err(|_|SshError::ConnectTimeout)?;
                             match channel {
                                 Ok(channel)=>{if dynamic {socket.write_all(&[5,0,0,1,0,0,0,0,0,0]).await?;} bridge(socket,channel,&stats).await},
                                 Err(e)=>{if dynamic{let _=socket.write_all(&[5,5,0,1,0,0,0,0,0,0]).await;}Err(e)}
@@ -128,7 +128,7 @@ impl Forwarder {
                         stats.connections.fetch_add(1,Ordering::Relaxed);
                         let result=async {
                             let socket=tokio::time::timeout(Duration::from_secs(15),TcpStream::connect((target.as_str(),port))).await.map_err(|_|SshError::ConnectTimeout)??;
-                            bridge(channel.into_stream(),socket,&stats).await
+                            bridge(channel,socket,&stats).await
                         }.await;
                         if result.is_err(){stats.errors.fetch_add(1,Ordering::Relaxed);}stats.connections.fetch_sub(1,Ordering::Relaxed);
                     });

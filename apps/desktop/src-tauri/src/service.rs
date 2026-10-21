@@ -133,6 +133,7 @@ pub struct Services {
     pub(crate) vault_managed: bool,
     pub(crate) network: Arc<crate::network_service::NetworkRegistry>,
     reconcile: ReconcileReport,
+    pub(crate) ssh_auth: crate::ssh_auth::Registry,
 }
 
 impl Services {
@@ -186,6 +187,7 @@ impl Services {
             vault_managed: false,
             network: Arc::new(crate::network_service::NetworkRegistry::default()),
             reconcile,
+            ssh_auth: crate::ssh_auth::Registry::default(),
         })
     }
 
@@ -545,6 +547,13 @@ impl Services {
                         .is_some_and(|p| p.as_str().starts_with("vault://"))
                         || written.contains(&passphrase_key);
                 }
+            }
+            _ => {
+                if auth_changed {
+                    self.secrets.delete(&password_key).map_err(secret_error)?;
+                    self.secrets.delete(&passphrase_key).map_err(secret_error)?;
+                }
+                configured = false;
             }
         }
 
@@ -1087,6 +1096,18 @@ impl Services {
         id: HostId,
         host: &selai_storage::HostRecord,
     ) -> Result<Auth, CommandError> {
+        if host.auth.uses_native() {
+            return self
+                .ssh_auth
+                .register(
+                    id.to_string(),
+                    host.label.clone(),
+                    host.auth,
+                    host.private_key_path.clone(),
+                    self.agent.drain.clone(),
+                )
+                .map(Auth::Native);
+        }
         match host.auth {
             AuthMethod::Password => {
                 let secret = self
@@ -1146,6 +1167,7 @@ impl Services {
                     passphrase,
                 })
             }
+            _ => Err(invalid_message("Unsupported authentication method")),
         }
     }
 }
@@ -1273,10 +1295,7 @@ fn key_view(name: String, public: &russh::keys::PublicKey) -> SshKeyView {
 impl HostInput {
     fn to_settings(&self) -> Result<HostSettings, CommandError> {
         let auth = AuthMethod::parse(&self.auth_method).ok_or_else(|| {
-            CommandError::new(
-                ErrorCode::InvalidInput,
-                "authMethod must be password or private_key",
-            )
+            CommandError::new(ErrorCode::InvalidInput, "Unknown SSH authentication method")
         })?;
         let private_key_path = match self.private_key_path.as_deref() {
             Some(p) if !p.is_empty() => Some(KeyPath::parse(p).map_err(invalid)?),
@@ -1302,6 +1321,12 @@ impl HostInput {
             },
         };
         settings.check_auth_shape().map_err(invalid)?;
+        if auth.uses_native()
+            && (non_empty(self.password.as_deref()).is_some()
+                || non_empty(self.key_passphrase.as_deref()).is_some())
+        {
+            return Err(invalid_message("Native SSH credentials are requested at connection time, not stored in this profile."));
+        }
         if auth == AuthMethod::PrivateKey && self.password.as_deref().is_some_and(|p| !p.is_empty())
         {
             return Err(CommandError::new(

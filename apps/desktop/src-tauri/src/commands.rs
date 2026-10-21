@@ -851,3 +851,21 @@ pub fn preferences_set(
 ) -> Result<AiPreferences, CommandError> {
     services(&state)?.preferences_set(input)
 }
+
+#[tauri::command]
+pub fn ssh_auth_watch(
+    state: State<'_, AppState>,
+    on_event: Channel<crate::ssh_auth::Challenge>,
+) -> Result<Vec<crate::ssh_auth::Challenge>, CommandError> {
+    services(&state)?.ssh_auth_watch(Arc::new(move |challenge| {
+        let _ = on_event.send(challenge);
+    }))
+}
+#[tauri::command]
+pub fn ssh_auth_answer(
+    state: State<'_, AppState>,
+    id: String,
+    answer: Option<String>,
+) -> Result<(), CommandError> {
+    services(&state)?.ssh_auth_answer(&id, answer)
+}

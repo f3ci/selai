@@ -18,29 +18,59 @@ pub enum ShellEvent {
 }
 
 pub struct Shell {
-    channel: Channel<Msg>,
+    channel: Option<Channel<Msg>>,
+    native: Option<crate::native::NativeShell>,
 }
 
 impl Shell {
+    pub(crate) fn from_native(native: crate::native::NativeShell) -> Self {
+        Self {
+            channel: None,
+            native: Some(native),
+        }
+    }
     pub(crate) fn new(channel: Channel<Msg>) -> Self {
-        Self { channel }
+        Self {
+            channel: Some(channel),
+            native: None,
+        }
     }
 
     pub async fn write(&self, bytes: &[u8]) -> Result<(), SshError> {
         // `&[u8]` implements AsyncRead, so the bytes are sent without copying
         // through a String.
-        self.channel.data(bytes).await?;
+        if let Some(native) = &self.native {
+            return native.write(bytes);
+        }
+        self.channel
+            .as_ref()
+            .ok_or(SshError::ChannelClosed)?
+            .data(bytes)
+            .await?;
         Ok(())
     }
 
     pub async fn resize(&self, cols: u32, rows: u32) -> Result<(), SshError> {
-        self.channel.window_change(cols, rows, 0, 0).await?;
+        if let Some(native) = &self.native {
+            return native.resize(cols, rows);
+        }
+        self.channel
+            .as_ref()
+            .ok_or(SshError::ChannelClosed)?
+            .window_change(cols, rows, 0, 0)
+            .await?;
         Ok(())
     }
 
     pub async fn next_event(&mut self) -> ShellEvent {
+        if let Some(native) = &mut self.native {
+            return native.next_event().await;
+        }
+        let Some(channel) = self.channel.as_mut() else {
+            return ShellEvent::Closed;
+        };
         loop {
-            match self.channel.wait().await {
+            match channel.wait().await {
                 Some(ChannelMsg::Data { data }) => return ShellEvent::Data(data.to_vec()),
                 Some(ChannelMsg::ExtendedData { data, .. }) => {
                     return ShellEvent::Data(data.to_vec())
@@ -63,7 +93,15 @@ impl Shell {
     }
 
     pub async fn close(&self) -> Result<(), SshError> {
-        self.channel.close().await?;
+        if let Some(native) = &self.native {
+            native.close();
+            return Ok(());
+        }
+        self.channel
+            .as_ref()
+            .ok_or(SshError::ChannelClosed)?
+            .close()
+            .await?;
         Ok(())
     }
 }

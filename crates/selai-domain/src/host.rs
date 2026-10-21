@@ -237,6 +237,14 @@ impl KeyPath {
 pub enum AuthMethod {
     Password,
     PrivateKey,
+    Auto,
+    KeyboardInteractive,
+    Agent,
+    Certificate,
+    SecurityKey,
+    SmartCard,
+    Gssapi,
+    HostBased,
 }
 
 impl AuthMethod {
@@ -244,13 +252,33 @@ impl AuthMethod {
         match self {
             Self::Password => "password",
             Self::PrivateKey => "private_key",
+            Self::Auto => "auto",
+            Self::KeyboardInteractive => "keyboard_interactive",
+            Self::Agent => "agent",
+            Self::Certificate => "certificate",
+            Self::SecurityKey => "security_key",
+            Self::SmartCard => "smart_card",
+            Self::Gssapi => "gssapi",
+            Self::HostBased => "host_based",
         }
+    }
+
+    pub fn uses_native(self) -> bool {
+        !matches!(self, Self::Password | Self::PrivateKey)
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "password" => Some(Self::Password),
             "private_key" => Some(Self::PrivateKey),
+            "auto" => Some(Self::Auto),
+            "keyboard_interactive" => Some(Self::KeyboardInteractive),
+            "agent" => Some(Self::Agent),
+            "certificate" => Some(Self::Certificate),
+            "security_key" => Some(Self::SecurityKey),
+            "smart_card" => Some(Self::SmartCard),
+            "gssapi" => Some(Self::Gssapi),
+            "host_based" => Some(Self::HostBased),
             _ => None,
         }
     }
@@ -276,7 +304,9 @@ impl HostSettings {
     /// Cross-field rules: a key path belongs to key auth only.
     pub fn check_auth_shape(&self) -> Result<(), HostFieldError> {
         match (self.auth, &self.private_key_path) {
-            (AuthMethod::PrivateKey, None) => Err(HostFieldError::KeyPath),
+            (AuthMethod::PrivateKey | AuthMethod::Certificate, None) => {
+                Err(HostFieldError::KeyPath)
+            }
             (AuthMethod::Password, Some(_)) => Err(HostFieldError::KeyPath),
             _ => Ok(()),
         }

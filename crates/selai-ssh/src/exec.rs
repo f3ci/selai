@@ -103,7 +103,15 @@ impl Session {
         max_bytes_per_stream: usize,
         cancel: &CancellationToken,
     ) -> Result<ExecOutput, SshError> {
-        let mut channel = self.handle.channel_open_session().await?;
+        if let Some(native) = &self.native {
+            let process = tokio::select! {
+                biased;
+                _=cancel.cancelled()=>return Ok(ExecOutput{stdout:Vec::new(),stderr:Vec::new(),stdout_truncated:false,stderr_truncated:false,exit_status:None,exit_signal:None,end:ExecEnd::Cancelled}),
+                process=native.process(&[],Some(command))=>process?,
+            };
+            return collect_native(process, feed, timeout, max_bytes_per_stream, cancel).await;
+        }
+        let mut channel = self.handle()?.channel_open_session().await?;
         channel.exec(true, command.as_bytes().to_vec()).await?;
 
         let mut out = ExecOutput {
@@ -193,4 +201,60 @@ fn append_capped(buf: &mut Vec<u8>, truncated: &mut bool, data: &[u8], cap: usiz
 
 fn signal_name_text(signal: &Sig) -> String {
     format!("{signal:?}")
+}
+
+async fn collect_native(
+    mut process: crate::native::NativeProcess,
+    mut feed: Option<(PromptWatch, &SecretValue)>,
+    timeout: Duration,
+    cap: usize,
+    cancel: &CancellationToken,
+) -> Result<ExecOutput, SshError> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut out = ExecOutput {
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+        exit_status: None,
+        exit_signal: None,
+        end: ExecEnd::Completed,
+    };
+    let deadline = tokio::time::sleep(timeout);
+    tokio::pin!(deadline);
+    let mut stdout_open = true;
+    let mut stderr_open = true;
+    let mut stdout = [0; 8192];
+    let mut stderr = [0; 8192];
+    if feed.is_none() {
+        process.stdin.take();
+    }
+    loop {
+        tokio::select! {
+            biased;
+            _=cancel.cancelled()=>{out.end=ExecEnd::Cancelled;break},
+            _=&mut deadline=>{out.end=ExecEnd::TimedOut;break},
+            result=process.stdout.read(&mut stdout), if stdout_open=>match result {
+                Ok(0)|Err(_)=>stdout_open=false,
+                Ok(n)=>{if let Some((watch,_))=feed.as_mut(){if watch.on_stdout(&stdout[..n])==StdinAction::Close{process.stdin.take();}} append_capped(&mut out.stdout,&mut out.stdout_truncated,&stdout[..n],cap);}
+            },
+            result=async {match process.stderr.as_mut(){Some(pipe)=>pipe.read(&mut stderr).await,None=>Ok(0)}}, if stderr_open=>match result {
+                Ok(0)|Err(_)=>stderr_open=false,
+                Ok(n)=>{
+                    if let Some((watch,secret))=feed.as_mut(){if watch.on_stderr(&stderr[..n])==StdinAction::SendPasswordAndClose{
+                        if let Some(mut stdin)=process.stdin.take(){let mut line=secret.expose_for_transport().to_vec();line.push(b'\n');let sent=stdin.write_all(&line).await;line.fill(0);sent?;}
+                    }}
+                    append_capped(&mut out.stderr,&mut out.stderr_truncated,&stderr[..n],cap);
+                }
+            },
+            result=process.exit.changed(), if !stdout_open && !stderr_open && process.exit.borrow().is_none()=>{if result.is_err(){out.end=ExecEnd::ChannelClosed;break}},
+        }
+        if !stdout_open && !stderr_open {
+            if let Some(status) = *process.exit.borrow() {
+                out.exit_status = Some(status);
+                break;
+            }
+        }
+    }
+    Ok(out)
 }

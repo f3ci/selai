@@ -20,7 +20,7 @@ fn settings(label: &str, auth: AuthMethod) -> HostSettings {
             AuthMethod::PrivateKey => {
                 Some(KeyPath::parse("/home/op/.ssh/id_ed25519").expect("path"))
             }
-            AuthMethod::Password => None,
+            _ => None,
         },
         group_id: None,
         connect_timeout: ConnectTimeout::DEFAULT,
@@ -458,4 +458,40 @@ fn the_local_computer_is_built_in_unlisted_and_read_only() {
         1,
     );
     assert!(matches!(clash, Err(StorageError::Conflict(_))));
+}
+
+#[test]
+fn advanced_authentication_roundtrips_without_changing_host_identity_or_pins() {
+    let mut db = Database::open_in_memory().unwrap();
+    let id = HostId::new();
+    let mut host = db
+        .create_host(id, &settings("Authentication", AuthMethod::Password), T0)
+        .unwrap();
+    let pin = key("AAAA", "SHA256:test");
+    db.pin_host_key(id, &pin).unwrap();
+    for (index, method) in [
+        AuthMethod::Auto,
+        AuthMethod::KeyboardInteractive,
+        AuthMethod::Agent,
+        AuthMethod::Certificate,
+        AuthMethod::SecurityKey,
+        AuthMethod::SmartCard,
+        AuthMethod::Gssapi,
+        AuthMethod::HostBased,
+        AuthMethod::PrivateKey,
+        AuthMethod::Password,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut input = settings("Authentication", method);
+        if method == AuthMethod::Certificate {
+            input.private_key_path = Some(KeyPath::parse("/home/op/.ssh/cert_identity").unwrap());
+        }
+        host = db
+            .update_host(id, &input, host.updated_at_ms, T0 + index as i64 + 1)
+            .unwrap();
+        assert_eq!(db.get_host(id).unwrap().unwrap().auth, method);
+        assert_eq!(db.active_pinned_keys(id).unwrap(), vec![pin.clone()]);
+    }
 }

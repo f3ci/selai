@@ -68,7 +68,7 @@ function validate(form: FormState): string | null {
   if (!form.username.trim()) return 'Username is required.';
   const port = Number(form.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return 'Port must be 1 to 65535.';
-  if (form.authMethod === 'private_key' && !form.privateKeyPath.trim()) {
+  if ((form.authMethod === 'private_key' || form.authMethod === 'certificate') && !form.privateKeyPath.trim()) {
     return 'Choose an SSH key for key authentication.';
   }
   return null;
@@ -140,7 +140,7 @@ export function HostForm({ host, onCancel, onSaved, onManageKeys, onManageProxie
       port: Number(form.port),
       username: form.username.trim(),
       authMethod: form.authMethod,
-      privateKeyPath: form.authMethod === 'private_key' ? form.privateKeyPath.trim() : null,
+      privateKeyPath: form.authMethod !== 'password' && form.privateKeyPath.trim() ? form.privateKeyPath.trim() : null,
       connectTimeoutSeconds: Number(form.connectTimeoutSeconds),
       keepAliveSeconds: Number(form.keepAliveSeconds),
       terminalType: form.terminalType.trim(),
@@ -255,7 +255,32 @@ export function HostForm({ host, onCancel, onSaved, onManageKeys, onManageProxie
               </button>
             </div>
           </div>
-          {form.authMethod === 'password' ? (
+          <Field label="Additional authentication methods">
+            <ThemedSelect label="Additional authentication methods" value={['password', 'private_key'].includes(form.authMethod) ? '' : form.authMethod}
+              onChange={(value) => { if (value) { setForm((previous) => ({ ...previous, authMethod: value as AuthMethod, privateKeyPath: '' })); } }}
+              options={[{ value: '', label: 'Password or private key above' },
+                { value: 'auto', label: 'Automatic / multi-factor (OpenSSH)' },
+                { value: 'keyboard_interactive', label: 'Keyboard-interactive / OTP' },
+                { value: 'agent', label: 'SSH agent' },
+                { value: 'certificate', label: 'OpenSSH user certificate' },
+                { value: 'security_key', label: 'FIDO2 / security key' },
+                { value: 'smart_card', label: 'Smart card / PKCS#11' },
+                { value: 'gssapi', label: 'Kerberos / GSSAPI' },
+                { value: 'host_based', label: 'Host-based authentication' }]} />
+          </Field>
+          {form.authMethod !== 'password' && form.authMethod !== 'private_key' ? (
+            <>
+              <p className="hint">Uses your system OpenSSH client and SSH configuration. Passwords, OTPs and PINs are requested when connecting. Server-required MFA steps are supported.</p>
+              {form.authMethod === 'agent' && <p className="hint">Start your SSH agent and load the required key. Agent-backed certificates and hardware keys can also be used.</p>}
+              {form.authMethod === 'gssapi' && <p className="hint">Requires a GSSAPI-capable OpenSSH build and a valid Kerberos ticket. Use the server DNS name that matches its service principal.</p>}
+              {form.authMethod === 'host_based' && <p className="hint">Requires ssh-keysign, local host keys and server-side host-based trust.</p>}
+              {form.authMethod === 'security_key' && <p className="hint">Requires a FIDO-capable OpenSSH build and the token. Load its key into your agent or select the local security-key identity file below.</p>}
+              {form.authMethod === 'certificate' && <p className="hint">Enter the local private-key path. OpenSSH reads the matching certificate from &lt;key-path&gt;-cert.pub, or CertificateFile in your SSH config.</p>}
+              {['auto', 'certificate', 'security_key', 'smart_card'].includes(form.authMethod) && <Field label={form.authMethod === 'smart_card' ? 'PKCS#11 provider path (optional)' : 'Local identity file (optional except for certificates)'}>
+                <input value={form.privateKeyPath} onChange={(e) => set('privateKeyPath')(e.target.value)} placeholder={form.authMethod === 'smart_card' ? 'Provider DLL / shared library, or configure PKCS11Provider' : 'Local file path, or use IdentityFile in SSH config'} />
+              </Field>}
+            </>
+          ) : form.authMethod === 'password' ? (
             <Field label="Password" hint={hasSavedPassword ? 'Saved in your encrypted vault. Click the eye to reveal it; leave blank to keep it.' : 'Stored inside your encrypted vault.'}>
               <PasswordInput
                 value={password}

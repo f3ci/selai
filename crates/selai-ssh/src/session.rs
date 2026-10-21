@@ -36,6 +36,7 @@ impl Endpoint {
 
 /// Credential for one connection. Secrets are only read here, never stored.
 pub enum Auth {
+    Native(crate::NativeAuth),
     Password(SecretValue),
     PrivateKey {
         path: PathBuf,
@@ -60,7 +61,8 @@ pub struct ConnectOptions {
 
 /// An authenticated transport. Terminal and exec channels are opened on it.
 pub struct Session {
-    pub(crate) handle: client::Handle<PinVerifier>,
+    pub(crate) handle: Option<client::Handle<PinVerifier>>,
+    pub(crate) native: Option<Arc<crate::native::NativeSession>>,
     endpoint: Endpoint,
     remote: crate::host_key::RemoteRoute,
 }
@@ -73,15 +75,36 @@ impl std::fmt::Debug for Session {
     }
 }
 
+impl Drop for Session {
+    fn drop(&mut self) {
+        if let Some(native) = &self.native {
+            native.stop.cancel();
+        }
+    }
+}
+
 impl Session {
+    pub(crate) fn channel_timeout(&self) -> Duration {
+        Duration::from_secs(if self.native.is_some() { 300 } else { 15 })
+    }
+    pub(crate) fn handle(&self) -> Result<&client::Handle<PinVerifier>, SshError> {
+        self.handle.as_ref().ok_or(SshError::ChannelClosed)
+    }
     pub fn is_closed(&self) -> bool {
-        self.handle.is_closed()
+        if let Some(native) = &self.native {
+            return native.is_closed();
+        }
+        self.handle.as_ref().is_none_or(|handle| handle.is_closed())
     }
     pub async fn close(&self) {
-        let _ = self
-            .handle
-            .disconnect(Disconnect::ByApplication, "", "en")
-            .await;
+        if let Some(native) = &self.native {
+            native.stop.cancel();
+            return;
+        }
+        let Ok(handle) = self.handle() else {
+            return;
+        };
+        let _ = handle.disconnect(Disconnect::ByApplication, "", "en").await;
     }
 
     pub async fn open_sftp(&self) -> Result<russh_sftp::client::SftpSession, SshError> {
@@ -90,40 +113,45 @@ impl Session {
             .await
             .map_err(|e| SshError::Protocol(format!("SFTP could not start: {e}")))
     }
-    pub async fn sftp_stream(&self) -> Result<russh::ChannelStream<client::Msg>, SshError> {
-        let channel = self.handle.channel_open_session().await?;
+    pub async fn sftp_stream(&self) -> Result<crate::SshStream, SshError> {
+        if let Some(native) = &self.native {
+            return native.stream(&["-s"], Some("sftp")).await;
+        }
+        let channel = self.handle()?.channel_open_session().await?;
         channel.request_subsystem(true, "sftp").await?;
-        Ok(channel.into_stream())
+        Ok(Box::new(channel.into_stream()))
     }
 
-    pub async fn direct_tcpip(
-        &self,
-        host: &str,
-        port: u16,
-    ) -> Result<russh::ChannelStream<client::Msg>, SshError> {
-        Ok(self
-            .handle
-            .channel_open_direct_tcpip(host, u32::from(port), "127.0.0.1", 0)
-            .await?
-            .into_stream())
+    pub async fn direct_tcpip(&self, host: &str, port: u16) -> Result<crate::SshStream, SshError> {
+        if let Some(native) = &self.native {
+            let target = if host.contains(':') {
+                format!("[{host}]:{port}")
+            } else {
+                format!("{host}:{port}")
+            };
+            return native.stream(&["-W", &target], None).await;
+        }
+        Ok(Box::new(
+            self.handle()?
+                .channel_open_direct_tcpip(host, u32::from(port), "127.0.0.1", 0)
+                .await?
+                .into_stream(),
+        ))
     }
 
     pub async fn remote_forward(
         &self,
         bind: &str,
         port: u16,
-    ) -> Result<
-        (
-            u16,
-            tokio::sync::mpsc::Receiver<russh::Channel<client::Msg>>,
-        ),
-        SshError,
-    > {
-        let (tx, rx) = tokio::sync::mpsc::channel(32);
+    ) -> Result<(u16, tokio::sync::mpsc::Receiver<crate::SshStream>), SshError> {
+        if let Some(native) = &self.native {
+            return native.remote_forward(bind, port).await;
+        }
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<russh::Channel<client::Msg>>(32);
         if let Ok(mut route) = self.remote.lock() {
             *route = Some((u32::from(port), tx));
         }
-        let assigned = self.handle.tcpip_forward(bind, u32::from(port)).await?;
+        let assigned = self.handle()?.tcpip_forward(bind, u32::from(port)).await?;
         let actual = if port == 0 {
             u16::try_from(assigned).map_err(|_| SshError::Protocol("Invalid remote port".into()))?
         } else {
@@ -134,14 +162,24 @@ impl Session {
                 *p = u32::from(actual);
             }
         }
-        Ok((actual, rx))
+        let (stream_tx, stream_rx) = tokio::sync::mpsc::channel(32);
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {_=stream_tx.closed()=>break,channel=rx.recv()=>match channel {Some(channel)=>if stream_tx.send(Box::new(channel.into_stream()) as crate::SshStream).await.is_err(){break},None=>break}}
+            }
+        });
+        Ok((actual, stream_rx))
     }
 
     pub async fn cancel_remote_forward(&self, bind: &str, port: u16) {
-        let _ = self
-            .handle
-            .cancel_tcpip_forward(bind, u32::from(port))
-            .await;
+        if let Some(native) = &self.native {
+            native.cancel_remote_forward(bind, port);
+            return;
+        }
+        let Ok(handle) = self.handle() else {
+            return;
+        };
+        let _ = handle.cancel_tcpip_forward(bind, u32::from(port)).await;
         if let Ok(mut route) = self.remote.lock() {
             *route = None;
         }
@@ -152,7 +190,10 @@ impl Session {
 
     /// Opens a PTY channel with a login shell.
     pub async fn open_shell(&self, cols: u32, rows: u32, term: &str) -> Result<Shell, SshError> {
-        let channel = self.handle.channel_open_session().await?;
+        if let Some(native) = &self.native {
+            return Ok(Shell::from_native(native.open_shell(cols, rows, term)?));
+        }
+        let channel = self.handle()?.channel_open_session().await?;
         channel
             .request_pty(true, term, cols, rows, 0, 0, &[])
             .await?;
@@ -161,7 +202,11 @@ impl Session {
     }
 
     pub async fn disconnect(self) -> Result<(), SshError> {
-        self.handle
+        if let Some(native) = &self.native {
+            native.stop.cancel();
+            return Ok(());
+        }
+        self.handle()?
             .disconnect(Disconnect::ByApplication, "", "en")
             .await?;
         Ok(())
@@ -180,6 +225,16 @@ pub async fn connect_via(
     opts: ConnectOptions,
     proxy: Option<crate::ProxyOptions>,
 ) -> Result<Session, SshError> {
+    if matches!(&opts.auth, Auth::Native(_)) {
+        let native = crate::native::NativeSession::connect(&opts, proxy).await?;
+        let verifier = PinVerifier::new(opts.pinned.clone()).0;
+        return Ok(Session {
+            handle: None,
+            native: Some(native),
+            endpoint: opts.endpoint,
+            remote: verifier.remote.clone(),
+        });
+    }
     let (verifier, outcome) = PinVerifier::new(opts.pinned.clone());
     let remote = verifier.remote.clone();
     let config = Arc::new(client::Config {
@@ -198,7 +253,8 @@ pub async fn connect_via(
     match tokio::time::timeout(opts.connect_timeout, attempt).await {
         Err(_) => Err(SshError::ConnectTimeout),
         Ok(Ok(handle)) => Ok(Session {
-            handle,
+            handle: Some(handle),
+            native: None,
             endpoint,
             remote,
         }),
@@ -212,9 +268,20 @@ async fn authenticate(
     auth: &Auth,
 ) -> Result<(), SshError> {
     let result = match auth {
+        Auth::Native(_) => return Err(SshError::AuthFailed),
         Auth::Password(secret) => {
             let password = utf8(secret.expose_for_transport()).ok_or(SshError::AuthFailed)?;
-            handle.authenticate_password(username, password).await?
+            let result = handle.authenticate_password(username, password).await?;
+            if let client::AuthResult::Failure {
+                remaining_methods,
+                partial_success: false,
+            } = &result
+            {
+                if remaining_methods.contains(&russh::MethodKind::KeyboardInteractive) {
+                    return authenticate_interactive_password(handle, username, password).await;
+                }
+            }
+            result
         }
         Auth::PrivateKey { passphrase, .. } | Auth::PrivateKeyData { passphrase, .. } => {
             let passphrase = match passphrase {
@@ -231,7 +298,7 @@ async fn authenticate(
                         .ok_or_else(|| SshError::KeyLoad("Private key is not UTF-8".into()))?,
                     passphrase,
                 ),
-                Auth::Password(_) => unreachable!(),
+                Auth::Password(_) | Auth::Native(_) => unreachable!(),
             }
             .map_err(|e| SshError::KeyLoad(e.to_string()))?;
             if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. }) {
@@ -276,6 +343,49 @@ async fn authenticate(
     } else {
         Err(SshError::AuthFailed)
     }
+}
+
+/// Password-only keyboard-interactive fallback. Do not reuse the saved password
+/// for OTP, password changes, multiple prompts, or repeated password challenges.
+async fn authenticate_interactive_password(
+    handle: &mut client::Handle<PinVerifier>,
+    username: &str,
+    password: &str,
+) -> Result<(), SshError> {
+    use client::KeyboardInteractiveAuthResponse as Response;
+
+    let mut response = handle
+        .authenticate_keyboard_interactive_start(username, None)
+        .await?;
+    let mut password_sent = false;
+    // PAM may send empty informational rounds before or after the password.
+    // Bound these independently of the connection timeout.
+    for _ in 0..8 {
+        let answers = match response {
+            Response::Success => return Ok(()),
+            Response::Failure { .. } => return Err(SshError::AuthFailed),
+            Response::InfoRequest { prompts, .. } if prompts.is_empty() => Vec::new(),
+            Response::InfoRequest { prompts, .. }
+                if !password_sent
+                    && prompts.len() == 1
+                    && !prompts[0].echo
+                    && prompts[0]
+                        .prompt
+                        .trim()
+                        .trim_end_matches(':')
+                        .trim()
+                        .eq_ignore_ascii_case("password") =>
+            {
+                password_sent = true;
+                vec![password.to_owned()]
+            }
+            Response::InfoRequest { .. } => return Err(SshError::AuthFailed),
+        };
+        response = handle
+            .authenticate_keyboard_interactive_respond(answers)
+            .await?;
+    }
+    Err(SshError::AuthFailed)
 }
 
 /// Turns a failed connect into the most specific error. Key verdicts come from

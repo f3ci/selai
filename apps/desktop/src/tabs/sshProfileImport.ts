@@ -400,8 +400,8 @@ export function prepareProfiles(table: ProfileTable, mapping: ColumnMapping, exi
     const privateKeyPath = cell('privateKeyPath').trim();
     const keyPassphrase = cell('keyPassphrase');
     const rawAuth = normalized(cell('authMethod'));
-    const authMethod: AuthMethod = rawAuth === 'privatekey' || rawAuth === 'key' || (!rawAuth && privateKeyPath)
-      ? 'private_key' : 'password';
+    const methods: Record<string, AuthMethod> = { password: 'password', privatekey: 'private_key', key: 'private_key', auto: 'auto', keyboardinteractive: 'keyboard_interactive', agent: 'agent', certificate: 'certificate', securitykey: 'security_key', smartcard: 'smart_card', gssapi: 'gssapi', hostbased: 'host_based' };
+    const authMethod: AuthMethod = methods[rawAuth] ?? (!rawAuth && privateKeyPath ? 'private_key' : 'password');
     const type = normalized(cell('type'));
     const displayLabel = safeLabel(sourceLabel || hostname, hostname);
     let issue: string | null = row.ssh_config_issue || null;
@@ -412,9 +412,10 @@ export function prepareProfiles(table: ProfileTable, mapping: ColumnMapping, exi
     else if (!username) issue = 'Missing username.';
     else if (username.length > 64 || !/^[!-~]+$/.test(username)) issue = 'Username must be printable ASCII without spaces (up to 64 characters).';
     else if (!Number.isInteger(port) || port < 1 || port > 65535) issue = 'Port must be 1 to 65535.';
-    else if (rawAuth && !['password', 'privatekey', 'key'].includes(rawAuth)) issue = 'Unsupported authentication method.';
-    else if (authMethod === 'private_key' && !privateKeyPath) issue = 'Key authentication needs a local private key path.';
+    else if (rawAuth && !methods[rawAuth]) issue = 'Unsupported authentication method.';
+    else if ((authMethod === 'private_key' || authMethod === 'certificate') && !privateKeyPath) issue = 'Key authentication needs a local private key path.';
     else if (authMethod === 'private_key' && password) issue = 'Password conflicts with key authentication.';
+    else if (!['password', 'private_key'].includes(authMethod) && (password || keyPassphrase)) issue = 'Native SSH credentials are requested when connecting; remove saved secrets from this row.';
     else if (authMethod === 'password' && keyPassphrase) issue = 'Key passphrase needs key authentication.';
     else if (labels.has(displayLabel.toLocaleLowerCase())) issue = 'Label already exists.';
     else if (targets.has(`${hostname.toLocaleLowerCase()}|${port}|${username}`)) issue = 'Host and username already exist.';
@@ -423,7 +424,7 @@ export function prepareProfiles(table: ProfileTable, mapping: ColumnMapping, exi
     const configuredKeepAlive = Number(row.keep_alive_seconds);
     const input: HostInput | null = issue ? null : {
       label: displayLabel, hostname, port, username, authMethod,
-      privateKeyPath: authMethod === 'private_key' ? privateKeyPath : null,
+      privateKeyPath: authMethod !== 'password' && privateKeyPath ? privateKeyPath : null,
       connectTimeoutSeconds: Number.isInteger(configuredConnectTimeout) ? configuredConnectTimeout : 15,
       keepAliveSeconds: Number.isInteger(configuredKeepAlive) ? configuredKeepAlive : 30,
       terminalType: 'xterm-256color',

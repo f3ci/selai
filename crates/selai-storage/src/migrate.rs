@@ -45,6 +45,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 9,
         sql: include_str!("../migrations/0009_network_profiles.sql"),
     },
+    Migration {
+        version: 10,
+        sql: include_str!("../migrations/0010_authentication.sql"),
+    },
 ];
 
 /// Applies every migration newer than the database's recorded version.

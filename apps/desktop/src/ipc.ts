@@ -38,7 +38,7 @@ export interface KeyErrorDetails {
   pinnedFingerprintSha256?: string | null;
 }
 
-export type AuthMethod = 'password' | 'private_key';
+export type AuthMethod = 'password' | 'private_key' | 'auto' | 'keyboard_interactive' | 'agent' | 'certificate' | 'security_key' | 'smart_card' | 'gssapi' | 'host_based';
 
 export interface HostView {
   id: string;
@@ -594,4 +594,15 @@ export function preferencesGet(): Promise<AiPreferences> {
 
 export function preferencesSet(input: Partial<AiPreferences>): Promise<AiPreferences> {
   return invoke<AiPreferences>('preferences_set', { input });
+}
+
+
+export interface SshAuthChallenge { id: string; hostId: string; hostLabel: string; prompt: string; kind: string; instructions?: string }
+export async function sshAuthWatch(onEvent: (challenge: SshAuthChallenge) => void): Promise<SshAuthChallenge[]> {
+  const channel = new Channel<SshAuthChallenge>();
+  channel.onmessage = onEvent;
+  return invoke<SshAuthChallenge[]>('ssh_auth_watch', { onEvent: channel });
+}
+export async function sshAuthAnswer(id: string, answer: string | null): Promise<void> {
+  return invoke('ssh_auth_answer', { id, answer });
 }

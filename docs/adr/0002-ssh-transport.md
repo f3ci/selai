@@ -34,9 +34,14 @@ host-key bypass. AGENTS.md requires strict pinning after first trust.
    certificate fails verification with `SSH_HOSTKEY_UNKNOWN`. Certificate trust
    is not in scope.
 6. **Authentication:** password, or private-key file with optional passphrase
-   (`russh::keys::load_secret_key`). Keyboard-interactive and agent auth are not
-   offered in v1. Failure returns `SSH_AUTH_FAILED` and does not reveal which
-   method was rejected.
+   (`russh::keys::load_secret_key`). If password authentication is refused and
+   the server offers keyboard-interactive, retry with the saved password for
+   a single hidden `Password:` prompt. Empty informational rounds are bounded;
+   OTP, password changes, multiple prompts and repeated password requests are
+   rejected by this automatic fallback. Full interactive authentication and
+   OS-provided methods use the system OpenSSH backend described in
+   [SSH authentication](../ssh-authentication.md).
+   Failure returns `SSH_AUTH_FAILED` and does not reveal which method was rejected.
 7. **Timeouts:** the connect timeout (1..120 s, default 15) covers TCP plus key
    exchange plus authentication. Keepalive is set from the host profile.
 8. **PTY:** `pty-req` with `xterm-256color` (or the host's terminal type), then
@@ -84,3 +89,19 @@ verification hook differs.
 - Agent D (agent/policy) uses `SshSession::exec` only after policy approval and
   audit pre-record. Do not call exec from UI code.
 - Host-key rotation UI must go through the trust flow above.
+
+
+## Expanded user authentication
+
+Profiles can select system OpenSSH for automatic/MFA, keyboard-interactive,
+agent, user certificate, FIDO, PKCS#11, GSSAPI or host-based authentication.
+The embedded backend remains available for existing password/vault-key profiles.
+Both backends share the Session interface for shells, exec, SFTP and forwarding.
+Native authentication uses an in-memory askpass broker with host-bound,
+expiring capabilities and response buffers that are cleared on drop. An
+isolated per-session known_hosts file contains only Selai's pins; native
+connections perform strict verification after a credential-free preflight probe.
+No native connection check executes a remote command. See the linked support
+matrix for platform requirements, separate-connection behavior and live-test
+limits. Migration 0010 adds an expanded authentication column without rebuilding
+hosts or changing existing host IDs, foreign keys, history or pins.

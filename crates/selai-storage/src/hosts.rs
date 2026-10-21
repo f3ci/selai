@@ -62,7 +62,7 @@ pub struct PinnedKey {
     pub first_seen_at_ms: i64,
 }
 
-const HOST_COLUMNS: &str = "id, label, hostname, port, username, auth_method, private_key_path,
+const HOST_COLUMNS: &str = "id, label, hostname, port, username, COALESCE(auth_method_v2, auth_method), private_key_path,
     group_id, connect_timeout_seconds, keepalive_seconds, terminal_type, notes,
     credential_configured, created_at_ms, updated_at_ms, last_connected_at_ms, archived_at_ms, kind";
 
@@ -167,8 +167,8 @@ impl Database {
         tx.execute(
             "INSERT INTO hosts (id, label, hostname, port, username, auth_method, private_key_path,
                 group_id, connect_timeout_seconds, keepalive_seconds, terminal_type, notes,
-                credential_configured, created_at_ms, updated_at_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?13)",
+                credential_configured, created_at_ms, updated_at_ms, auth_method_v2)
+             VALUES (?1, ?2, ?3, ?4, ?5, CASE WHEN ?6 = 'private_key' THEN 'private_key' ELSE 'password' END, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?13, ?6)",
             params![
                 id.to_string(),
                 settings.label.as_str(),
@@ -221,7 +221,7 @@ impl Database {
         }
         ensure_label_free(&tx, settings.label.as_str(), Some(id))?;
         tx.execute(
-            "UPDATE hosts SET label = ?2, hostname = ?3, port = ?4, username = ?5, auth_method = ?6,
+            "UPDATE hosts SET label = ?2, hostname = ?3, port = ?4, username = ?5, auth_method = CASE WHEN ?6 = 'private_key' THEN 'private_key' ELSE 'password' END, auth_method_v2 = ?6,
                 private_key_path = ?7, group_id = ?8, connect_timeout_seconds = ?9,
                 keepalive_seconds = ?10, terminal_type = ?11, notes = ?12, updated_at_ms = ?13
               WHERE id = ?1",

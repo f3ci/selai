@@ -131,3 +131,12 @@ describe('HostForm', () => {
     expect(password).toHaveAttribute('placeholder', expect.stringContaining('saved'));
   });
 });
+
+it('saves agent authentication without retaining a password from the previous selection', async () => {
+  const save = vi.spyOn(ipc, 'hostSave').mockResolvedValue({} as ipc.HostView);
+  render(<HostForm host={null} onCancel={vi.fn()} onSaved={vi.fn()} />);
+  fill('Label', 'Agent'); fill('Host name or IP', 'example.test'); fill('Username', 'ops'); fill('Password', 'discard-me');
+  chooseSelectValue('Additional authentication methods', 'agent');
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ authMethod: 'agent', password: undefined, keyPassphrase: undefined, privateKeyPath: null })));
+});

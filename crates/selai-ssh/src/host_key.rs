@@ -187,10 +187,18 @@ pub async fn probe_host_key_via(
     timeout: std::time::Duration,
     proxy: Option<crate::ProxyOptions>,
 ) -> Result<ObservedHostKey, SshError> {
+    probe_host_key_via_ref(endpoint, timeout, proxy.as_ref()).await
+}
+
+pub(crate) async fn probe_host_key_via_ref(
+    endpoint: &Endpoint,
+    timeout: std::time::Duration,
+    proxy: Option<&crate::ProxyOptions>,
+) -> Result<ObservedHostKey, SshError> {
     let (verifier, outcome) = PinVerifier::new(Vec::new());
     let config = Arc::new(client::Config::default());
     let attempt = async {
-        let stream = crate::proxy::transport(endpoint, proxy.as_ref()).await?;
+        let stream = crate::proxy::transport(endpoint, proxy).await?;
         client::connect_stream(config, stream, verifier).await
     };
     let result = tokio::time::timeout(timeout, attempt).await;

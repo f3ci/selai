@@ -8,6 +8,8 @@
 //! exchange, before a credential is sent.
 
 mod error;
+mod native;
+pub use native::{NativeAuth, NativeInteraction, SshStream};
 mod exec;
 mod forward;
 mod host_key;
