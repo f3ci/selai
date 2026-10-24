@@ -486,7 +486,11 @@ mod tests {
             .unwrap();
             writeln!(stream, "{line}").unwrap();
             let mut line = String::new();
-            BufReader::new(stream).read_line(&mut line).unwrap();
+            match BufReader::new(stream).read_line(&mut line) {
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => return None,
+                Err(error) => panic!("askpass helper read failed: {error}"),
+            }
             if line.is_empty() {
                 None
             } else {
