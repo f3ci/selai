@@ -157,10 +157,11 @@ export function ProxiesPage({
       {deleting && (
         <Dialog
           title={`Delete ${deleting.name}?`}
+          tone="danger" icon={<TrashIcon size={20} />} closeDisabled={busy}
           onClose={() => !busy && setDeleting(null)}
           footer={
             <>
-              <button className="btn" disabled={busy} onClick={() => setDeleting(null)}>
+              <button className="btn" data-autofocus disabled={busy} onClick={() => setDeleting(null)}>
                 Cancel
               </button>
               <button className="btn btn-danger" disabled={busy} onClick={() => void remove()}>

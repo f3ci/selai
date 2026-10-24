@@ -271,6 +271,12 @@ pub fn local_host(state: State<'_, AppState>) -> Result<HostView, CommandError> 
 }
 
 #[tauri::command]
+pub async fn local_hosts(state: State<'_, AppState>) -> Result<Vec<HostView>, CommandError> {
+    let lease = services(&state)?;
+    lease.run(lease.local_hosts()).await
+}
+
+#[tauri::command]
 pub fn host_get(state: State<'_, AppState>, id: String) -> Result<HostView, CommandError> {
     services(&state)?.host_get(&id)
 }

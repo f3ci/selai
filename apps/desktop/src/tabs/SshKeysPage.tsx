@@ -139,8 +139,8 @@ export function SshKeysPage({ visible, onReturnToProfile }: Props) {
       {visible && editor && <KeyEditor key={editor} mode={editor} onClose={() => setEditor(null)} onCreated={(key) => {
         setKeys((items) => [key, ...items]); setQuery(''); setError(null); setEditor(null);
       }} />}
-      {visible && deleting && <Dialog title="Delete SSH key?" tone="danger" icon={<TrashIcon />} onClose={() => { if (!deletingBusy) setDeleting(null); }}
-        footer={<><button className="btn" type="button" disabled={deletingBusy} onClick={() => setDeleting(null)}>Cancel</button>
+      {visible && deleting && <Dialog title="Delete SSH key?" tone="danger" icon={<TrashIcon />} closeDisabled={deletingBusy} onClose={() => { if (!deletingBusy) setDeleting(null); }}
+        footer={<><button className="btn" type="button" data-autofocus disabled={deletingBusy} onClick={() => setDeleting(null)}>Cancel</button>
           <button className="btn btn-danger" type="button" disabled={deletingBusy} onClick={() => void remove()}>{deletingBusy ? 'Deleting…' : 'Delete key'}</button></>}>
         <p>Delete “{deleting.name}” from the vault? Keys assigned to a profile must be unassigned first.</p>
         {deleteError && <p role="alert" className="banner" data-tone="danger">{deleteError}</p>}

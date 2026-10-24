@@ -34,10 +34,16 @@ fn failure(what: &str, e: &dyn std::fmt::Display) -> CommandError {
 }
 
 /// The user's login shell, or the platform default.
-fn default_shell() -> CommandBuilder {
+fn default_shell(distribution: Option<&str>) -> Result<CommandBuilder, CommandError> {
+    if let Some(distribution) = distribution {
+        crate::wsl::validate(distribution)?;
+        let mut command = CommandBuilder::new(crate::wsl::executable());
+        command.args(["--distribution", distribution, "--cd", "~"]);
+        return Ok(command);
+    }
     #[cfg(windows)]
     {
-        CommandBuilder::new("powershell.exe")
+        Ok(CommandBuilder::new("powershell.exe"))
     }
     #[cfg(not(windows))]
     {
@@ -47,7 +53,7 @@ fn default_shell() -> CommandBuilder {
             .unwrap_or_else(|| "/bin/sh".to_owned());
         let mut cmd = CommandBuilder::new(shell);
         cmd.arg("-l");
-        cmd
+        Ok(cmd)
     }
 }
 
@@ -55,6 +61,7 @@ fn default_shell() -> CommandBuilder {
 /// applies input, resizes and close requests. `on_end` runs once the shell has
 /// exited, before the final `Closed` event.
 pub(crate) fn spawn_local_shell(
+    distribution: Option<&str>,
     cols: u32,
     rows: u32,
     mut input: mpsc::Receiver<TerminalInput>,
@@ -62,10 +69,10 @@ pub(crate) fn spawn_local_shell(
     flow: Option<Arc<TerminalFlow>>,
     on_end: Box<dyn FnOnce() + Send>,
 ) -> Result<Arc<dyn Fn() + Send + Sync>, CommandError> {
+    let mut cmd = default_shell(distribution)?;
     let pair = native_pty_system()
         .openpty(pty_size(cols, rows))
         .map_err(|e| failure("could not open a terminal", &e))?;
-    let mut cmd = default_shell();
     cmd.env("TERM", "xterm-256color");
     if let Some(home) = home_dir() {
         cmd.cwd(home);

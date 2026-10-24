@@ -76,6 +76,21 @@ async function sendRequest(textarea: HTMLElement, text: string) {
 }
 
 describe('AgentPanel', () => {
+  it('runs AI commands against the WSL identity when its terminal is focused', async () => {
+    const wsl = { ...host, id: 'wsl-debian', kind: 'local', label: 'WSL - Debian', wslDistribution: 'Debian' } as ipc.HostView;
+    vi.spyOn(ipc, 'localHosts').mockResolvedValue([wsl]);
+    vi.spyOn(ipc, 'hostList').mockResolvedValue({ items: [], nextCursor: null });
+    vi.spyOn(ipc, 'providerList').mockResolvedValue({ items: [verified], nextCursor: null });
+    const start = vi.spyOn(ipc, 'agentStart').mockResolvedValue('wsl-task');
+    render(<AgentPanel activeHost={wsl} />);
+    fireEvent.change(screen.getByLabelText('Request'), { target: { value: 'Show the Linux distribution version' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(start).toHaveBeenCalledWith(
+      'wsl-debian', 'p1', 'Show the Linux distribution version', [], expect.any(Function), 'qwen-tools',
+    ));
+  });
+
   it('keeps an unsaved session in memory and allows retrying a failed write', async () => {
     vi.mocked(ipc.chatSessionSave).mockRejectedValueOnce(new Error('disk full'));
     render(<AgentPanel />);
@@ -391,6 +406,25 @@ describe('AgentPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(chat).toHaveBeenCalledWith(
       'p1', [{ role: 'user', content: 'Explain SSH multiplexing' }], expect.any(Function), 'qwen-chat',
+    ));
+  });
+
+  it.each(['empty', 'failed', 'missing'])('uses the configured model in chat when discovery is %s', async (result) => {
+    vi.spyOn(ipc, 'providerList').mockResolvedValue({
+      items: [{ ...verified, modelId: 'custom-glm-model' }], nextCursor: null,
+    });
+    const models = vi.spyOn(ipc, 'providerModels');
+    if (result === 'failed') models.mockRejectedValue(new Error('Model listing unavailable'));
+    else models.mockResolvedValue({ models: result === 'empty' ? [] : ['another-model'], latencyMs: 12 });
+    const chat = vi.spyOn(ipc, 'chatSend').mockResolvedValue('c1');
+    render(<AgentPanel />);
+    const model = await screen.findByRole('combobox', { name: 'Model' });
+    await waitFor(() => expect(model).toHaveAttribute('aria-valuetext', 'custom-glm-model'));
+    fireEvent.change(screen.getByLabelText('Request'), { target: { value: 'Hello' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(chat).toHaveBeenCalledWith(
+      'p1', [{ role: 'user', content: 'Hello' }], expect.any(Function), 'custom-glm-model',
     ));
   });
 

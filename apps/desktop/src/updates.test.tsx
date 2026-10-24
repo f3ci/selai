@@ -20,9 +20,6 @@ function Shell() {
 
 describe('Release updates', () => {
   beforeEach(() => {
-    // jsdom does not implement the native modal dialog methods.
-    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.open = true; } });
-    Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.open = false; } });
     vi.spyOn(ipc, 'updateCheck').mockResolvedValue(available);
     vi.spyOn(ipc, 'updateOpen').mockResolvedValue();
   });
@@ -45,7 +42,7 @@ describe('Release updates', () => {
     expect(button).toBeInTheDocument();
     expect(button).toHaveFocus();
     fireEvent.click(button);
-    fireEvent(screen.getByRole('dialog'), new Event('cancel', { bubbles: false, cancelable: true }));
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(button).toHaveFocus();
   });

@@ -298,6 +298,35 @@ async fn rate_limit_is_retried_before_any_output_then_succeeds() {
 }
 
 #[tokio::test]
+async fn authentication_failures_keep_http_status_and_redacted_provider_details() {
+    for status in [401, 403] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(json!({
+                "error": {"code": "model_access_denied", "message": format!("Model is disabled for this account: {KEY} {}", "x".repeat(1000))}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (result, _) = run(
+            ProviderProtocol::OpenAiChat,
+            &format!("{}/v1", server.uri()),
+            Some(&key()),
+            &user("x"),
+            &[],
+        )
+        .await;
+        let err = result.expect_err("access denied");
+        assert_eq!(err.code, ErrorCode::ProviderUnauthorized);
+        assert!(err.message.contains(&format!("HTTP {status}")));
+        assert!(err.message.contains("model_access_denied"));
+        assert!(err.message.contains("Model is disabled"));
+        assert!(!err.message.contains(KEY));
+        assert!(err.message.chars().count() < 450);
+    }
+}
+
+#[tokio::test]
 async fn persistent_rate_limit_is_reported_after_bounded_retries() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

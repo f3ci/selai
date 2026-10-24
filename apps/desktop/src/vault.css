@@ -3,29 +3,30 @@
 .vault-screen { position: fixed; inset: 0; background: var(--bg); z-index: 40; display: flex; flex-direction: column; color: var(--fg); }
 .vault-center { flex: 1; display: grid; place-items: center; padding: 28px; overflow: auto; }
 .vault-card { width: min(100%, 470px); padding: 32px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
-.vault-card button { border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-2); padding: 9px 12px; cursor: pointer; }
-.vault-card button:hover:not(:disabled) { background: var(--surface-3); }
-.vault-card button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
-.vault-card button:disabled { opacity: .5; cursor: default; }
-.vault-card h1 { font-size: 24px; margin: 20px 0 12px; }
-.vault-card h2 { font-size: 22px; margin: 0 0 14px; }
-.vault-card p { line-height: 1.65; }
-.vault-card label:not(.vault-check) { display: grid; gap: 7px; margin: 17px 0; font-size: 13px; font-weight: 600; }
-.vault-card input:not([type=checkbox]), .vault-card textarea, .vault-card select { width: 100%; box-sizing: border-box; border: 1px solid var(--border, #444c49); border-radius: 8px; background: var(--bg, #151819); color: inherit; padding: 12px; font-size: 15px; }
-.vault-card input:focus-visible, .vault-card textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.vault-card textarea { font-family: monospace; resize: none; }
-.vault-card .primary { width: 100%; padding: 12px; margin-top: 12px; }
+:is(.vault-card, .vault-settings) button { border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-2); padding: 9px 12px; cursor: pointer; }
+:is(.vault-card, .vault-settings) button:hover:not(:disabled) { background: var(--surface-3); }
+:is(.vault-card, .vault-settings) button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+:is(.vault-card, .vault-settings) button:disabled { opacity: .5; cursor: default; }
+:is(.vault-card, .vault-settings) h1 { font-size: 24px; margin: 20px 0 12px; }
+:is(.vault-card, .vault-settings) h2 { font-size: 22px; margin: 0 0 14px; }
+:is(.vault-card, .vault-settings) p { line-height: 1.65; }
+:is(.vault-card, .vault-settings) label:not(.vault-check) { display: grid; gap: 7px; margin: 17px 0; font-size: 13px; font-weight: 600; }
+:is(.vault-card, .vault-settings) input:not([type=checkbox]), :is(.vault-card, .vault-settings) textarea, :is(.vault-card, .vault-settings) select { width: 100%; box-sizing: border-box; border: 1px solid var(--border, #444c49); border-radius: 8px; background: var(--bg, #151819); color: inherit; padding: 12px; font-size: 15px; }
+:is(.vault-card, .vault-settings) input:focus-visible, :is(.vault-card, .vault-settings) textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.vault-card, .vault-settings) textarea { font-family: monospace; resize: none; }
+:is(.vault-card, .vault-settings) .primary { width: 100%; padding: 12px; margin-top: 12px; }
 .vault-check { display: flex; align-items: center; gap: 9px; font-size: 13px; margin: 18px 0; }
 .vault-link { display: block; margin: 16px auto 0; }
 .vault-error { color: var(--danger); overflow-wrap: anywhere; }
 .vault-notice { color: var(--success); overflow-wrap: anywhere; }
 .vault-warning { padding: 14px; border: 1px solid var(--warning); border-radius: 8px; }
 .vault-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 15px 0; }
-.vault-modal-backdrop { position: fixed; z-index: 60; inset: 0; background: #0009; display: grid; place-items: center; padding: 24px; }
-.vault-security { max-height: calc(100vh - 100px); overflow-y: auto; width: min(100%, 540px); }
-.vault-security details { padding: 15px 0; border-top: 1px solid var(--border, #343a38); }
-.vault-security summary { cursor: pointer; }
+.vault-settings details { padding: 15px 0; border-top: 1px solid var(--border, #343a38); }
+.vault-settings summary { cursor: pointer; }
 .vault-cleanup-banner { position: fixed; bottom: 34px; right: 18px; z-index: 35; border: 1px solid var(--warning); border-radius: 8px; background: var(--surface); color: var(--warning); padding: 10px 14px; font-size: 12px; cursor: pointer; }
 .vault-spinner { width: 22px; height: 22px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: vault-spin .9s linear infinite; margin: 24px auto; }
 @keyframes vault-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .vault-spinner { animation-duration: 2s; } }
+
+.vault-security-dialog { width: min(540px, 100%); }
+.vault-settings > p + p { margin-top: 12px; }

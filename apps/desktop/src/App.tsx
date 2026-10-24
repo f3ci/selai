@@ -14,6 +14,7 @@ import { VaultGate } from './VaultGate';
 import { VaultWorkspacePhase } from './vaultWorkspace';
 import { applyTheme, readThemePreference, THEME_KEY, THEME_OPTIONS, useResolvedTheme, type Theme } from './theme';
 import { ThemedSelect } from './ui/ThemedSelect';
+import { LocalEnvironmentIcon } from './ui/LocalEnvironmentIcon';
 import { UpdateButton, UpdateProvider, UpdateVersion } from './updates';
 
 // xterm.js is large; load it only when a terminal is first needed.
@@ -394,7 +395,10 @@ export function Workbench() {
                       title={tab.kind === 'terminal' ? `${tab.host.username}@${tab.host.hostname}` : title}
                     >
                       {tab.kind === 'terminal' ? (
-                        <span className="dot" data-status={statuses[tab.key] ?? 'connecting'} />
+                        <>
+                          {tab.host.kind === 'local' && <LocalEnvironmentIcon host={tab.host} size={14} />}
+                          <span className="dot" data-status={statuses[tab.key] ?? 'connecting'} />
+                        </>
                       ) : tab.kind === 'keys' ? (
                         <KeyIcon size={13} />
                       ) : tab.kind === 'sftp' ? (<FilesIcon size={13} />) : tab.kind === 'forwarding' ? (<ForwardIcon size={13} />) : tab.kind === 'proxies' ? (<ProxyIcon size={13} />) : tab.kind === 'history' ? (
@@ -488,7 +492,7 @@ export function Workbench() {
         </span>
         {focusedTerminal && (
           <span className="status-item">
-            <TerminalIcon size={12} />
+            {focusedTerminal.host.kind === 'local' ? <LocalEnvironmentIcon host={focusedTerminal.host} size={14} /> : <TerminalIcon size={12} />}
             {focusedTerminal.host.label} · {statuses[focusedTerminal.key] ?? 'connecting'}
           </span>
         )}

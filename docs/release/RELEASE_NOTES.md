@@ -7,6 +7,25 @@ fixtures and mock providers. Windows packaging also checks encryption and the
 vault in the release build profile. This is not complete interactive coverage
 of every platform and live AI provider. The installers are not code-signed.
 
+## New in 0.4.0
+
+This preview adds local and WSL environments to the SSH workspace and improves
+several everyday workflows.
+
+- **Local and WSL targets:** manage local Windows and WSL hosts alongside SSH
+  profiles, open terminals, and route agent commands to the selected environment.
+  WSL profiles are stored with host data and can be selected from the workspace.
+- **Terminal improvements:** refine local terminal lifecycle and output handling,
+  with clearer local-environment identification in the host list.
+- **Safer, clearer workflows:** add confirmation dialogs for destructive actions
+  and polish host groups, provider settings, history, forwarding, SFTP, and SSH
+  key management.
+- **Provider and vault refinements:** improve provider connection handling and
+  vault unlock flows, with updated documentation and interface details.
+
+See the README for the current feature overview. As a preview, local and WSL
+execution still depends on the machine's shell and WSL configuration.
+
 ## New in 0.3.3
 
 This preview expands SSH authentication by integrating the operating system's

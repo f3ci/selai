@@ -1,6 +1,7 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { describeError, updateCheck, updateOpen, type UpdateCheck } from './ipc';
-import { CheckIcon, CloseIcon, ImportIcon, RefreshIcon } from './ui/icons';
+import { CheckIcon, ImportIcon, RefreshIcon } from './ui/icons';
+import { Dialog } from './ui/Overlay';
 import './updates.css';
 
 const ReleaseMarkdown = lazy(() => import('react-markdown'));
@@ -73,21 +74,11 @@ export function UpdateVersion({ version }: { version?: string }) {
 }
 
 function UpdateDialog({ updates, close }: { updates: Updates; close: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const [opening, setOpening] = useState(false);
   const [opened, setOpened] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
   const update = updates.result?.update;
   const download = update?.download;
-  useEffect(() => {
-    const element = dialog.current;
-    const previous = document.activeElement;
-    element?.showModal();
-    return () => {
-      element?.close();
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-    };
-  }, []);
 
   async function openTarget(target: 'release' | 'download') {
     setOpening(true); setOpenError(null);
@@ -96,15 +87,18 @@ function UpdateDialog({ updates, close }: { updates: Updates; close: () => void 
     finally { setOpening(false); }
   }
 
-  return <dialog ref={dialog} className="dialog update-dialog" aria-labelledby="update-title" onCancel={(event) => { event.preventDefault(); close(); }}>
-    <header className="dialog-head">
-      <span className="dialog-icon">{update ? <ImportIcon size={19} /> : <RefreshIcon size={19} />}</span>
-      <div className="grow"><span className="update-eyebrow">SELAI UPDATES</span>
-        <h2 id="update-title">{update ? 'A new version is ready' : updates.checking ? 'Checking for updates' : updates.error ? 'Could not check for updates' : 'You’re up to date'}</h2>
-      </div>
-      <button type="button" className="icon-btn" aria-label="Close updates" onClick={close}><CloseIcon size={17} /></button>
-    </header>
-    <div className="dialog-body">
+  return <Dialog className="update-dialog" eyebrow="SELAI UPDATES" closeLabel="Close updates" onClose={close}
+    title={update ? 'A new version is ready' : updates.checking ? 'Checking for updates' : updates.error ? 'Could not check for updates' : 'You’re up to date'}
+    icon={update ? <ImportIcon size={19} /> : <RefreshIcon size={19} />}
+    footer={<>
+      {update && <button type="button" className="btn btn-ghost" disabled={opening} onClick={() => void openTarget('release')}>View on GitHub</button>}
+      <span className="grow" />
+      <button type="button" className="btn" onClick={close}>{opened ? 'Keep working' : update ? 'Later' : 'Close'}</button>
+      {download ? <button type="button" className="btn btn-primary" disabled={opening} onClick={() => void openTarget('download')}>
+        {opening ? <span className="spinner" /> : <ImportIcon size={14} />}{opening ? 'Opening…' : opened ? 'Download again' : 'Download update'}</button>
+        : (!update || updates.error) && <button type="button" className="btn btn-primary" disabled={updates.checking} onClick={() => void updates.refresh()}>
+          {updates.checking ? 'Checking…' : 'Check again'}</button>}
+    </>}>
       {update ? <>
         <div className="update-versions"><span>Installed <strong>{updates.result?.currentVersion}</strong></span>
           <span aria-hidden="true">→</span><span>Available <strong>{update.version}</strong></span></div>
@@ -125,15 +119,5 @@ function UpdateDialog({ updates, close }: { updates: Updates; close: () => void 
       </> : updates.checking ? <p role="status" className="history-loading"><span className="spinner" /> Looking for a newer release on GitHub…</p>
         : !updates.error && <p role="status">You’re running the latest available version{updates.result ? ` (${updates.result.currentVersion})` : ''}.</p>}
       {(updates.error || openError) && <p role="alert" className="banner" data-tone="danger">{openError || updates.error}</p>}
-    </div>
-    <footer className="dialog-foot">
-      {update && <button type="button" className="btn btn-ghost" disabled={opening} onClick={() => void openTarget('release')}>View on GitHub</button>}
-      <span className="grow" />
-      <button type="button" className="btn" onClick={close}>{opened ? 'Keep working' : update ? 'Later' : 'Close'}</button>
-      {download ? <button type="button" className="btn btn-primary" disabled={opening} onClick={() => void openTarget('download')}>
-        {opening ? <span className="spinner" /> : <ImportIcon size={14} />}{opening ? 'Opening…' : opened ? 'Download again' : 'Download update'}</button>
-        : (!update || updates.error) && <button type="button" className="btn btn-primary" disabled={updates.checking} onClick={() => void updates.refresh()}>
-          {updates.checking ? 'Checking…' : 'Check again'}</button>}
-    </footer>
-  </dialog>;
+  </Dialog>;
 }

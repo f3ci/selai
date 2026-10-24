@@ -1461,6 +1461,9 @@ details.advanced > .form-section {
   animation: pop 0.14s ease-out;
   max-height: calc(100% - 24px);
   overflow: auto;
+  color: var(--fg);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .dialog-head {
@@ -1472,7 +1475,15 @@ details.advanced > .form-section {
 
 .dialog-head h2 {
   font-size: 16px;
+  overflow-wrap: anywhere;
 }
+
+.dialog-heading { flex: 1; min-width: 0; }
+.dialog-eyebrow { display: block; margin-bottom: 4px; color: var(--faint); font-size: 10px; letter-spacing: .08em; }
+.dialog-head > .icon-btn { flex: none; align-self: flex-start; }
+.confirmation-copy { line-height: 1.65; overflow-wrap: anywhere; }
+.confirmation-copy strong { color: var(--fg-strong); font-weight: 600; }
+.confirmation-copy p + p { margin-top: .65rem; }
 
 .dialog-icon {
   display: grid;
@@ -1504,6 +1515,11 @@ details.advanced > .form-section {
   gap: 0.5rem;
   padding: 0.9rem 1.3rem;
   border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim, .dialog, .drawer { animation: none; }
 }
 
 .fingerprint {
@@ -3461,6 +3477,21 @@ option {
 .local-avatar {
   background: var(--surface-3);
   color: var(--fg);
+}
+
+.local-environment-icon {
+  display: block;
+  object-fit: contain;
+  flex: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.local-environment-icon[data-environment='Debian'] { filter: brightness(1.6); }
+:root[data-theme='light'] .local-environment-icon[data-environment='Debian'],
+:root[data-theme='catppuccin-latte'] .local-environment-icon[data-environment='Debian'] { filter: none; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .local-environment-icon[data-environment='Debian'] { filter: none; }
 }
 
 .target-chip small {

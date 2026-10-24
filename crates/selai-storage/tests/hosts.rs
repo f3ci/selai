@@ -9,6 +9,45 @@ use selai_storage::{Database, PinOutcome, PinnedKey, StorageError};
 
 const T0: i64 = 1_000;
 
+#[test]
+fn wsl_distributions_have_stable_distinct_local_identities() {
+    let mut db = Database::open_in_memory().expect("db");
+    let native = db.local_host().expect("native host");
+    let ubuntu = db.ensure_wsl_host("Ubuntu-24.04").expect("Ubuntu");
+    let repeated = db.ensure_wsl_host("ubuntu-24.04").expect("same distro");
+    let debian = db.ensure_wsl_host("Debian").expect("Debian");
+    assert_eq!(ubuntu.id, repeated.id);
+    assert_ne!(ubuntu.id, native.id);
+    assert_ne!(ubuntu.id, debian.id);
+    assert!(ubuntu.is_local);
+    assert_eq!(ubuntu.wsl_distribution.as_deref(), Some("Ubuntu-24.04"));
+    assert!(!ubuntu.credential_configured);
+    assert!(db
+        .list_hosts(false, None, &PageRequest::default())
+        .expect("SSH hosts")
+        .items
+        .is_empty());
+    assert!(db.archive_host(ubuntu.id, T0).is_err());
+    assert!(db
+        .update_host(ubuntu.id, &settings("Renamed", AuthMethod::Password), 0, T0)
+        .is_err());
+}
+
+#[test]
+fn wsl_identity_survives_reopening_and_rejects_invalid_names() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("wsl.sqlite3");
+    let id = {
+        let mut db = Database::open(&path).expect("db");
+        db.ensure_wsl_host("Debian").expect("distro").id
+    };
+    let mut db = Database::open(&path).expect("reopen");
+    assert_eq!(db.ensure_wsl_host("Debian").expect("distro").id, id);
+    for bad in ["", "--help", "invalid\nname", "invalid|name"] {
+        assert!(db.ensure_wsl_host(bad).is_err());
+    }
+}
+
 fn settings(label: &str, auth: AuthMethod) -> HostSettings {
     HostSettings {
         label: HostLabel::parse(label).expect("label"),

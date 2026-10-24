@@ -459,9 +459,10 @@ export function SftpPage({ visible }: { visible: boolean }) {
                 : 'Delete entry?'
           }
           onClose={() => !promptBusy && setPrompt(null)}
+          tone={prompt.action === 'delete' ? 'danger' : 'default'} closeDisabled={promptBusy}
           footer={
             <>
-              <button className="btn" disabled={promptBusy} onClick={() => setPrompt(null)}>
+              <button className="btn" data-autofocus={prompt.action === 'delete' || undefined} disabled={promptBusy} onClick={() => setPrompt(null)}>
                 Cancel
               </button>
               <button

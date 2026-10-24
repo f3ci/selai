@@ -289,7 +289,7 @@ export function TerminalPane({ host, hidden, onStatus, onClose, onEditHost, font
 
   const address =
     host.kind === 'local'
-      ? 'Local shell'
+      ? host.wslDistribution ? `WSL · ${host.wslDistribution}` : 'Local shell'
       : `${host.username}@${host.hostname}${host.port !== 22 ? `:${host.port}` : ''}`;
   const statusText: Record<SessionStatus, string> = {
     connecting: 'Connecting…',

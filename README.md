@@ -182,7 +182,12 @@ trust an unknown server key *before* sending credentials. It refuses a changed
 key until you inspect and explicitly replace the saved fingerprint.
 
 Each terminal tab stays bound to its host. The host explorer also includes
-**This computer** for a local terminal. Terminal tabs report connection state
+**This computer** for a local terminal. On Windows, expand **This computer** to
+choose **PowerShell** or an installed WSL distribution such as **WSL - Debian**.
+Each entry displays its shell or distribution logo. Refresh hosts after installing a distribution. WSL terminals
+open in the Linux user's home directory; AI tasks that follow the terminal run
+inside that distribution, with separate host identities and history.
+Terminal tabs report connection state
 and close automatically when the shell exits (`exit`), releasing the
 session. If login fails, the tab stays open for retry or editing the profile.
 

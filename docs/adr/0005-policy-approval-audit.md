@@ -102,6 +102,11 @@ and task. The spec forbids executing text the model produced in plain prose.
     and limits; only the executor differs (a local process instead of an SSH
     exec channel, with stdin closed). Root commands use the same sudo wrapper on
     the local machine. The row cannot be edited, archived, probed or trusted.
+    On Windows, each discovered WSL distribution has another `kind = 'local'`
+    row with a stable UUID and `wsl_distribution` (migration 0011). Terminal and
+    agent execution select that distribution through `wsl.exe` arguments. Tasks,
+    approvals, credentials, and history stay bound to that distribution's host
+    identity; the native Windows target retains its original fixed UUID.
 
 ## Consequences
 

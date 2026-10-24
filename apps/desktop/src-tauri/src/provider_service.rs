@@ -2,7 +2,7 @@
 //! key goes to the OS store before the profile is committed, and nothing returns
 //! the key to the webview.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use selai_domain::{
     BaseUrl, ErrorCode, MaxOutputTokens, ModelId, Page, PageRequest, ProviderId, ProviderName,
@@ -109,14 +109,18 @@ fn provider_view(rec: &ProviderRecord) -> ProviderView {
     }
 }
 
-fn llm_failure(kind: &'static str, err: &selai_llm::LlmError) -> ProviderTestView {
+fn llm_failure(
+    kind: &'static str,
+    err: &selai_llm::LlmError,
+    started: Instant,
+) -> ProviderTestView {
     ProviderTestView {
         kind,
         ok: false,
         verified: false,
         code: Some(err.code),
         message: err.message.clone(),
-        latency_ms: 0,
+        latency_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
         reply_preview: None,
     }
 }
@@ -250,6 +254,7 @@ impl Services {
             .get(&SecretKey::provider_api_key(id))
             .map_err(|e| CommandError::new(e.code(), e.to_string()))?;
         let cancel = CancellationToken::new();
+        let started = Instant::now();
 
         match kind {
             "connectivity" => Ok(
@@ -263,7 +268,7 @@ impl Services {
                         latency_ms: t.latency_ms,
                         reply_preview: Some(t.reply_preview),
                     },
-                    Err(e) => llm_failure("connectivity", &e),
+                    Err(e) => llm_failure("connectivity", &e, started),
                 },
             ),
             "tool_calling" => {
@@ -282,7 +287,7 @@ impl Services {
                             reply_preview: None,
                         })
                     }
-                    Err(e) => Ok(llm_failure("tool_calling", &e)),
+                    Err(e) => Ok(llm_failure("tool_calling", &e, started)),
                 }
             }
             _ => Err(CommandError::new(
@@ -292,8 +297,8 @@ impl Services {
         }
     }
 
-    /// Checks an endpoint and key by listing its models. Works on a draft that
-    /// is not saved yet. The key typed in the form is used once and dropped;
+    /// Lists an endpoint's models without verifying access to inference. Works
+    /// on an unsaved draft. The typed key is used once and dropped;
     /// with no key typed, the key saved for `id` is used.
     pub async fn provider_models(
         &self,

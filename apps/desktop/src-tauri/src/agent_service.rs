@@ -548,7 +548,10 @@ impl Services {
             host,
             host_label: host_record.label.clone(),
             host_context: if host_record.is_local {
-                format!("{} (this computer, local shell)", host_record.label)
+                match &host_record.wsl_distribution {
+                    Some(distribution) => format!("{} (Linux in WSL distribution {distribution} on this computer; commands run in sh)", host_record.label),
+                    None => format!("{} (this computer, {} local shell)", host_record.label, std::env::consts::OS),
+                }
             } else {
                 format!(
                     "{} ({}@{}:{})",
@@ -577,12 +580,14 @@ impl Services {
         if host_record.is_local {
             // This computer: no SSH session, no host key. Same policy, approvals
             // and audit as any host.
+            let executor = LocalExecutor::new(host_record.wsl_distribution)
+                .map_err(|error| CommandError::new(error.code(), error.to_string()))?;
             let token = self.agent.register_task(task);
             tokio::spawn(async move {
                 let waiter = RegistryWaiter {
                     registry: Arc::clone(&registry),
                 };
-                run_task(spec, &store, &llm, &LocalExecutor, &waiter, sink, token).await;
+                run_task(spec, &store, &llm, &executor, &waiter, sink, token).await;
                 registry.finish_task(task);
             });
             return Ok(task.to_string());

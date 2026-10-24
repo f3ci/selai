@@ -7,6 +7,32 @@ vi.mock('./vault', async (original) => ({ ...await original<typeof import('./vau
 vi.mock('./App', () => ({ WindowControls: () => <span>Window controls</span> }));
 const status = (phase: vault.VaultStatus['phase']): vault.VaultStatus => ({ phase, legacyFound: false, timeoutMinutes: 15, activeTasks: 0, terminals: 0, cleanupPending: false, retryAfterMs: 0, flushRequired: false });
 describe('Vault gate', () => {
+  it('uses the shared security dialog and closes it with Escape', async () => {
+    vi.mocked(vault.vaultStatus).mockResolvedValue(status('unlocked'));
+    render(<VaultGate><div>Private workspace</div></VaultGate>);
+    await screen.findByText('Private workspace');
+    fireEvent(window, new Event('selai:security'));
+    const dialog = await screen.findByRole('dialog', { name: 'Vault security' });
+    expect(dialog).toHaveClass('dialog');
+    expect(screen.getByRole('button', { name: 'Close dialog' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Private workspace')).toBeVisible();
+  });
+
+  it('cancels the shared lock dialog without locking active work', async () => {
+    vi.mocked(vault.vaultStatus).mockResolvedValue({ ...status('unlocked'), activeTasks: 1 });
+    render(<VaultGate><div>Private workspace</div></VaultGate>);
+    await screen.findByText('Private workspace');
+    fireEvent(window, new Event('selai:lock'));
+    const dialog = await screen.findByRole('dialog', { name: 'Lock with work in progress?' });
+    expect(dialog).toHaveClass('dialog');
+    expect(screen.getByRole('button', { name: 'Keep working' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep working' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(vault.vaultLock).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => { vi.mocked(vault.vaultWatch).mockRejectedValue(new Error('legacy fixture')); vi.mocked(vault.vaultStatus).mockResolvedValue(status('locked')); vi.mocked(vault.vaultAction).mockResolvedValue(null); vi.mocked(vault.vaultActivity).mockResolvedValue(); vi.mocked(vault.vaultLock).mockResolvedValue(); });
   afterEach(() => vi.clearAllMocks());
   it('uses pushed status and ignores a delayed status from before the lock', async () => {
@@ -26,7 +52,7 @@ describe('Vault gate', () => {
     expect(await screen.findByText('Unlock Selai')).toBeInTheDocument(); expect(load).not.toHaveBeenCalled();
     vi.mocked(vault.vaultAction).mockImplementation(async () => { vi.mocked(vault.vaultStatus).mockResolvedValue(status('unlocked')); return null; });
     fireEvent.change(screen.getByLabelText('Passphrase'), { target: { value: 'forest river orange telescope' } }); fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
-    expect(await screen.findByText('Private workspace')).toBeVisible(); expect(load).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Private workspace')).toBeVisible(); await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
   });
   it('requires saving recovery key before opening a new vault', async () => {
     vi.mocked(vault.vaultStatus).mockResolvedValue({ ...status('setup'), legacyFound: true });

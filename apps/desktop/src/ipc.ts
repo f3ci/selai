@@ -60,6 +60,8 @@ export interface HostView {
   archived: boolean;
   /** `local` is the built-in "This computer" entry: no SSH, cannot be edited. */
   kind: 'ssh' | 'local';
+  /** Present only for a local WSL distribution on Windows. */
+  wslDistribution?: string;
 }
 
 export interface Page<T> {
@@ -144,6 +146,11 @@ export function hostList(query?: string, includeArchived = false, cursor?: strin
 export async function localHost(): Promise<HostView> {
   // Async so a failure always arrives as a rejected promise, never a throw.
   return invoke<HostView>('local_host');
+}
+
+/** Native local shell and installed WSL distributions; never starts a distro. */
+export async function localHosts(): Promise<HostView[]> {
+  return invoke<HostView[]>('local_hosts');
 }
 
 /** Sent on the window after a host is saved or archived, so other views reload. */

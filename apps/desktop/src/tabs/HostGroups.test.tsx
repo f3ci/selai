@@ -10,7 +10,6 @@ it('creates, renames, and deletes a group through its dedicated commands', async
   const create = vi.spyOn(ipc, 'groupCreate').mockResolvedValue(group);
   const rename = vi.spyOn(ipc, 'groupRename').mockResolvedValue({ ...group, name: 'Servers' });
   const remove = vi.spyOn(ipc, 'groupDelete').mockResolvedValue();
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
   const onChanged = vi.fn().mockResolvedValue(undefined);
   render(<HostGroups groups={[group]} onChanged={onChanged} onClose={vi.fn()} />);
   fireEvent.change(screen.getByLabelText('New group name'), { target: { value: 'Lab' } });
@@ -23,6 +22,9 @@ it('creates, renames, and deletes a group through its dedicated commands', async
   await waitFor(() => expect(rename).toHaveBeenCalledWith('prod', 'Servers'));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Delete Production' })).toBeEnabled());
   fireEvent.click(screen.getByRole('button', { name: 'Delete Production' }));
+  expect(remove).not.toHaveBeenCalled();
+  expect(screen.getByRole('alertdialog', { name: 'Delete SSH group?' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
   await waitFor(() => expect(remove).toHaveBeenCalledWith('prod'));
   await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(3));
 });

@@ -73,15 +73,21 @@ pub struct HostView {
     pub updated_at_ms: i64,
     pub last_connected_at_ms: Option<i64>,
     pub archived: bool,
-    /// `ssh`, or `local` for the built-in "This computer" entry.
+    /// `ssh`, or `local` for the native computer and WSL distributions.
     pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wsl_distribution: Option<String>,
 }
 
 impl From<HostRecord> for HostView {
     fn from(h: HostRecord) -> Self {
         Self {
             id: h.id.to_string(),
-            label: h.label,
+            label: if cfg!(windows) && h.is_local && h.wsl_distribution.is_none() {
+                "PowerShell".to_owned()
+            } else {
+                h.label
+            },
             group_id: h.group_id.map(|g| g.to_string()),
             proxy_id: None,
             hostname: h.hostname,
@@ -98,6 +104,7 @@ impl From<HostRecord> for HostView {
             last_connected_at_ms: h.last_connected_at_ms,
             archived: h.archived_at_ms.is_some(),
             kind: if h.is_local { "local" } else { "ssh" },
+            wsl_distribution: h.wsl_distribution,
         }
     }
 }
@@ -280,6 +287,7 @@ mod tests {
             last_connected_at_ms: None,
             archived: false,
             kind: "ssh",
+            wsl_distribution: None,
         };
         let json = serde_json::to_value(&view).expect("json");
         for key in [

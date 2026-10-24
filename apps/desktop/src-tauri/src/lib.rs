@@ -22,6 +22,7 @@ pub mod terminal_flow;
 mod terminal_tests;
 mod updates;
 pub mod vault_service;
+mod wsl;
 
 use std::sync::Arc;
 
@@ -154,6 +155,7 @@ pub fn run() {
             commands::sudo_options,
             commands::host_forget_sudo_password,
             commands::local_host,
+            commands::local_hosts,
             commands::history_list,
             commands::audit_verify,
             commands::history_query,

@@ -213,14 +213,17 @@ describe('HostHistoryTab', () => {
   it('clears stored output only after the operator confirms', async () => {
     mockHistory();
     const purge = vi.spyOn(ipc, 'historyPurgeOutput').mockResolvedValue({ executions: 1 });
-    vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     render(<HostHistoryTab visible />);
     await screen.findByText('check disk usage on the web node');
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear stored output' }));
     expect(purge).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog', { name: 'Clear stored output?' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(purge).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear stored output' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear output' }));
     await waitFor(() => expect(purge).toHaveBeenCalledWith('h1'));
   });
 

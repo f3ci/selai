@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react';
 import { describeError, groupList, HOSTS_CHANGED, hostArchive, hostList, hostMoveGroup, localHost, type GroupView, type HostView } from '../ipc';
 import { HostAvatar } from '../ui/HostAvatar';
+import { LocalEnvironmentAvatar } from '../ui/LocalEnvironmentIcon';
 import { collectPages } from '../ui/collectPages';
-import { ArchiveIcon, ChevronIcon, EditIcon, FolderIcon, ImportIcon, PlusIcon, RefreshIcon, SearchIcon, TerminalIcon } from '../ui/icons';
+import { loadLocalTargets } from '../ui/localTargets';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { ArchiveIcon, ChevronIcon, EditIcon, FolderIcon, ImportIcon, PlusIcon, RefreshIcon, SearchIcon } from '../ui/icons';
 import { HostForm } from './HostForm';
 import { HostGroups } from './HostGroups';
 import { HostImport } from './HostImport';
@@ -41,10 +44,11 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(storedCollapsedGroups);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<HostView | 'new' | null>(null);
+  const [archiving, setArchiving] = useState<HostView | null>(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [local, setLocal] = useState<HostView | null>(null);
+  const [local, setLocal] = useState<HostView[]>([]);
   const [open, setOpen] = useState({ local: true, ssh: true });
 
   useEffect(() => {
@@ -54,7 +58,7 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
   useEffect(() => {
     let active = true;
     localHost()
-      .then((h) => active && setLocal(h))
+      .then((h) => active && setLocal((previous) => previous.length ? previous : [h]))
       .catch(() => undefined);
     return () => {
       active = false;
@@ -62,6 +66,7 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
   }, []);
 
   const refresh = useCallback(async () => {
+    void loadLocalTargets().then(setLocal).catch(() => undefined);
     try {
       const [items, hostGroups] = await Promise.all([
         collectPages((cursor) => hostList(undefined, false, cursor)), groupList(),
@@ -96,16 +101,9 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
   }, [editRequest]);
 
   async function archive(host: HostView) {
-    if (!window.confirm(`Archive ${host.label}? Its history is kept; saved passwords are removed.`)) {
-      return;
-    }
-    try {
-      await hostArchive(host.id);
-      window.dispatchEvent(new Event(HOSTS_CHANGED));
-      await refresh();
-    } catch (err) {
-      setError(describeError(err));
-    }
+    await hostArchive(host.id);
+    window.dispatchEvent(new Event(HOSTS_CHANGED));
+    await refresh();
   }
 
   function canDrop(e: DragEvent) {
@@ -142,7 +140,8 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
     }
     return { visibleHosts, buckets: [...byId.values()].filter((bucket) => !q || bucket.hosts.length > 0 || draggedHost !== null), ungrouped };
   }, [hosts, groups, q, draggedHost]);
-  const showLocal = local !== null && (q === '' || local.label.toLowerCase().includes(q) || 'local'.includes(q));
+  const visibleLocal = local.filter((host) => q === '' || [host.label, host.wslDistribution ?? '', 'local'].some((value) => value.toLowerCase().includes(q)));
+  const showLocal = visibleLocal.length > 0;
 
   const hostRows = (items: HostView[]) => <ul className="tree-list">
     {items.map((host) => <HostRow key={host.id} host={host}
@@ -155,7 +154,7 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
         if (row) e.dataTransfer.setDragImage(row, 16, 16);
         setDraggedHost(host.id); setMoveNote(null);
       }} onDragEnd={() => { setDraggedHost(null); setDropTarget(null); }}
-      onEdit={() => setEditing(host)} onArchive={() => void archive(host)} />)}
+      onEdit={() => setEditing(host)} onArchive={() => setArchiving(host)} />)}
   </ul>;
 
   const groupSection = (id: string, name: string, items: HostView[]) => {
@@ -218,25 +217,25 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
       )}
 
       <div className="tree">
-        {showLocal && local && (
+        {showLocal && (
           <>
             <button
               type="button"
               className="tree-group"
-              aria-expanded={open.local}
+              aria-expanded={open.local || !!q}
               onClick={() => setOpen((o) => ({ ...o, local: !o.local }))}
             >
               <ChevronIcon size={12} />
               This computer
             </button>
-            {open.local && (
+            {(open.local || !!q) && (
               <ul className="tree-list">
-                <HostRow
-                  host={local}
-                  sub="local shell"
-                  status={sessions[local.id]}
+                {visibleLocal.map((host) => <HostRow key={host.id}
+                  host={host}
+                  sub={host.wslDistribution ? 'WSL Linux shell' : 'local shell'}
+                  status={sessions[host.id]}
                   onConnect={onConnect}
-                />
+                />)}
               </ul>
             )}
           </>
@@ -276,6 +275,11 @@ export function HostsSidebar({ onConnect, sessions = {}, editRequest, onManageKe
         )}
       </div>
 
+      {archiving && <ConfirmDialog title="Archive host?" icon={<ArchiveIcon size={20} />}
+        confirmLabel="Archive host" pendingLabel="Archiving…" onConfirm={() => archive(archiving)} onClose={() => setArchiving(null)}>
+        <p>Archive <strong>{archiving.label}</strong>?</p>
+        <p>Its command history will be kept. Saved passwords will be removed.</p>
+      </ConfirmDialog>}
       {editing && (
         <HostForm
           key={editing === 'new' ? 'new' : editing.id}
@@ -346,9 +350,7 @@ function HostRow({
         onDragEnd={onDragEnd}
       />
       {host.kind === 'local' ? (
-        <span className="avatar local-avatar">
-          <TerminalIcon size={12} />
-        </span>
+        <LocalEnvironmentAvatar host={host} />
       ) : (
         <HostAvatar label={host.label} size={12} />
       )}

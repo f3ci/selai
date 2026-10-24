@@ -28,9 +28,11 @@ pub struct HostRecord {
     pub updated_at_ms: i64,
     pub last_connected_at_ms: Option<i64>,
     pub archived_at_ms: Option<i64>,
-    /// The built-in "This computer" target. It has no credentials, no host keys,
+    /// A local native or WSL target. It has no SSH credentials or host keys,
     /// and cannot be edited or archived.
     pub is_local: bool,
+    /// An installed Windows WSL distribution; `None` uses the native local shell.
+    pub wsl_distribution: Option<String>,
 }
 
 /// Fixed id of the built-in local target (migration 0005).
@@ -64,7 +66,7 @@ pub struct PinnedKey {
 
 const HOST_COLUMNS: &str = "id, label, hostname, port, username, COALESCE(auth_method_v2, auth_method), private_key_path,
     group_id, connect_timeout_seconds, keepalive_seconds, terminal_type, notes,
-    credential_configured, created_at_ms, updated_at_ms, last_connected_at_ms, archived_at_ms, kind";
+    credential_configured, created_at_ms, updated_at_ms, last_connected_at_ms, archived_at_ms, kind, wsl_distribution";
 
 fn row_to_host(row: &Row<'_>) -> rusqlite::Result<HostRecord> {
     let id: String = row.get(0)?;
@@ -95,6 +97,7 @@ fn row_to_host(row: &Row<'_>) -> rusqlite::Result<HostRecord> {
         last_connected_at_ms: row.get(15)?,
         archived_at_ms: row.get(16)?,
         is_local: row.get::<_, String>(17)? == "local",
+        wsl_distribution: row.get(18)?,
     })
 }
 
@@ -274,6 +277,54 @@ impl Database {
             .map_err(|_| StorageError::Constraint("invalid local host id".to_owned()))?;
         self.get_host(id)?
             .ok_or_else(|| StorageError::NotFound("the local computer entry".to_owned()))
+    }
+
+    /// Registers a discovered distro once, preserving its identity and history.
+    pub fn ensure_wsl_host(&mut self, distribution: &str) -> Result<HostRecord, StorageError> {
+        if distribution.is_empty()
+            || distribution.len() > 256
+            || distribution.starts_with('-')
+            || distribution.chars().any(char::is_control)
+            || distribution.contains('|')
+        {
+            return Err(StorageError::Constraint(
+                "invalid WSL distribution name".to_owned(),
+            ));
+        }
+        let existing: Option<String> = self
+            .conn()
+            .query_row(
+                "SELECT id FROM hosts WHERE wsl_distribution = ?1 COLLATE NOCASE",
+                params![distribution],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(id) = existing {
+            let id: HostId = id
+                .parse()
+                .map_err(|_| StorageError::Constraint("invalid WSL host id".to_owned()))?;
+            return self
+                .get_host(id)?
+                .ok_or_else(|| StorageError::NotFound("WSL host".to_owned()));
+        }
+        let id = HostId::new();
+        let label = format!("WSL - {distribution}");
+        let occupied: bool = self.conn().query_row(
+            "SELECT EXISTS(SELECT 1 FROM hosts WHERE label = ?1 COLLATE NOCASE AND archived_at_ms IS NULL)",
+            params![label], |row| row.get(0),
+        )?;
+        let label = if occupied {
+            format!("{label} ({id})")
+        } else {
+            label
+        };
+        self.conn().execute(
+            "INSERT INTO hosts (id, label, hostname, port, username, auth_method, created_at_ms, updated_at_ms, kind, wsl_distribution)
+             VALUES (?1, ?2, 'localhost', 22, 'local', 'password', 0, 0, 'local', ?3)",
+            params![id.to_string(), label, distribution],
+        )?;
+        self.get_host(id)?
+            .ok_or_else(|| StorageError::NotFound("WSL host".to_owned()))
     }
 
     pub fn get_host(&self, id: HostId) -> Result<Option<HostRecord>, StorageError> {

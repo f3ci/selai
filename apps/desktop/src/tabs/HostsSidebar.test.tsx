@@ -10,6 +10,42 @@ beforeEach(() => {
 });
 
 describe('HostsSidebar', () => {
+  it('offers installed WSL distributions beside the native shell with independent identities', async () => {
+    const native = { id: 'local', label: 'PowerShell', kind: 'local', hostname: 'localhost' } as ipc.HostView;
+    const ubuntu = { ...native, id: 'wsl-ubuntu', label: 'WSL - Ubuntu-24.04', wslDistribution: 'Ubuntu-24.04' };
+    const debian = { ...native, id: 'wsl-debian', label: 'WSL - Debian', wslDistribution: 'Debian' };
+    const docker = { ...native, id: 'wsl-docker', label: 'WSL - docker-desktop', wslDistribution: 'docker-desktop' };
+    vi.spyOn(ipc, 'localHost').mockResolvedValue(native);
+    vi.spyOn(ipc, 'localHosts').mockResolvedValue([native, ubuntu, debian, docker]);
+    vi.spyOn(ipc, 'hostList').mockResolvedValue({ items: [], nextCursor: null });
+    const connect = vi.fn();
+    render(<HostsSidebar onConnect={connect} sessions={{ 'wsl-ubuntu': 'connected' }} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect to WSL - Ubuntu-24.04' }));
+    expect(connect).toHaveBeenCalledWith(ubuntu);
+    expect(screen.getByRole('button', { name: 'Connect to PowerShell' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect to This computer' })).not.toBeInTheDocument();
+    for (const name of ['PowerShell', 'Ubuntu', 'Debian', 'Docker']) {
+      expect(document.querySelector(`img[data-environment="${name}"]`)).toBeInTheDocument();
+    }
+    expect(screen.getByRole('button', { name: 'Connect to WSL - Debian' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'This computer' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter hosts' }), { target: { value: 'debian' } });
+    expect(screen.getByRole('button', { name: 'Connect to WSL - Debian' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect to WSL - Ubuntu-24.04' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the native shell available when WSL discovery fails', async () => {
+    const native = { id: 'local', label: 'PowerShell', kind: 'local' } as ipc.HostView;
+    vi.spyOn(ipc, 'localHost').mockResolvedValue(native);
+    vi.spyOn(ipc, 'localHosts').mockRejectedValue(new Error('WSL unavailable'));
+    vi.spyOn(ipc, 'hostList').mockResolvedValue({ items: [], nextCursor: null });
+    const connect = vi.fn();
+    render(<HostsSidebar onConnect={connect} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect to PowerShell' }));
+    expect(connect).toHaveBeenCalledWith(native);
+    expect(screen.queryByText('WSL Linux shell')).not.toBeInTheDocument();
+  });
+
   it('creates a group from the SSH hosts header and closes the create dialog', async () => {
     vi.spyOn(ipc, 'localHost').mockRejectedValue(new Error('unavailable'));
     vi.spyOn(ipc, 'hostList').mockResolvedValue({ items: [], nextCursor: null });
@@ -109,13 +145,15 @@ describe('HostsSidebar', () => {
         authMethod: 'password', credentialConfigured: true, kind: 'ssh' } as ipc.HostView,
     ], nextCursor: null });
     const connect = vi.fn();
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const archive = vi.spyOn(ipc, 'hostArchive').mockResolvedValue();
     render(<HostsSidebar onConnect={connect} />);
     expect(await screen.findByRole('button', { name: 'Edit Production Web' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Use .* in chat/ })).not.toBeInTheDocument();
     expect(screen.queryByTitle('Use in chat')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Archive Production Web' }));
-    expect(window.confirm).toHaveBeenCalledOnce();
+    expect(screen.getByRole('alertdialog', { name: 'Archive host?' })).toBeInTheDocument();
+    expect(archive).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(connect).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Connect to Production Web' }));
     expect(connect).toHaveBeenCalledOnce();

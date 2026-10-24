@@ -10,7 +10,6 @@ import {
   hostKeyProblem,
   sudoOptions,
   hostList,
-  localHost,
   preferencesGet,
   preferencesSet,
   taskTimeline,
@@ -25,6 +24,7 @@ import {
   type ChatMessage,
 } from '../ipc';
 import { HostAvatar } from '../ui/HostAvatar';
+import { LocalEnvironmentAvatar } from '../ui/LocalEnvironmentIcon';
 import { collectPages } from '../ui/collectPages';
 import { HostKeyDialog } from '../ui/HostKeyDialog';
 import { Markdown } from '../ui/Markdown';
@@ -47,14 +47,15 @@ import { SelaiLogo } from '../ui/SelaiLogo';
 import { applyEvent, isTerminal, setApprovalState, setExecutionOutput, type TranscriptItem } from './agentTranscript';
 import { PROVIDERS_CHANGED } from './ProvidersPanel';
 import { useChatSessions, type ChatTurn as Turn } from './useChatSessions';
+import { loadLocalTargets } from '../ui/localTargets';
 
 /** Load targets once; the @ picker filters this list without an IPC call per key. */
 async function loadTargets(): Promise<HostView[]> {
   const [local, hosts] = await Promise.all([
-    localHost().catch(() => null),
+    loadLocalTargets().catch(() => []),
     collectPages((cursor) => hostList(undefined, false, cursor)),
   ]);
-  return [...(local ? [local] : []), ...hosts.filter((h) => !h.archived)];
+  return [...local, ...hosts.filter((h) => !h.archived)];
 }
 
 /** The trailing "@query" being typed at the end of the request. */
@@ -191,7 +192,9 @@ export function AgentPanel({ onOpenProviders, onOpenHosts, onClose, activeHost =
     }).then((result) => {
       if (!active) return;
       const available = [...new Set(result.models)];
-      if (available.length === 0) available.push(provider.modelId);
+      if (available.length === 0 || (provider.modelId !== 'default' && !available.includes(provider.modelId))) {
+        available.push(provider.modelId);
+      }
       setModels(available);
       const remembered = modelChoices.current.get(provider.id);
       const next = (remembered && available.includes(remembered) ? remembered : null)
@@ -1060,11 +1063,7 @@ const TurnEntry = memo(function TurnEntry({ turn, onDecide }: {
 
 function TargetAvatar({ host }: { host: HostView }) {
   if (host.kind !== 'local') return <HostAvatar label={host.label} size={13} />;
-  return (
-    <span className="avatar local-avatar">
-      <TerminalIcon size={13} />
-    </span>
-  );
+  return <LocalEnvironmentAvatar host={host} size={15} />;
 }
 
 /** Shows the bound "@Label" as a pill inside the sent message. */

@@ -17,10 +17,36 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-pub struct LocalExecutor;
+#[derive(Default)]
+pub struct LocalExecutor {
+    distribution: Option<String>,
+}
+
+impl LocalExecutor {
+    pub fn new(distribution: Option<String>) -> Result<Self, SshError> {
+        if let Some(name) = &distribution {
+            crate::wsl::validate(name).map_err(|error| SshError::Protocol(error.message))?;
+        }
+        Ok(Self { distribution })
+    }
+}
 
 /// The shell that runs one command string.
-fn shell(command: &str) -> Command {
+fn shell(command: &str, distribution: Option<&str>) -> Command {
+    if let Some(distribution) = distribution {
+        let mut command_builder = Command::new(crate::wsl::executable());
+        command_builder.args([
+            "--distribution",
+            distribution,
+            "--cd",
+            "~",
+            "--exec",
+            "sh",
+            "-c",
+            command,
+        ]);
+        return command_builder;
+    }
     #[cfg(windows)]
     {
         let mut c = Command::new("powershell.exe");
@@ -50,16 +76,16 @@ impl RemoteExecutor for LocalExecutor {
         let command = command.to_owned();
         let cancel = cancel.clone();
         async move {
-            let child = spawn(&command, false)?;
+            let child = spawn(&command, false, self.distribution.as_deref())?;
             Ok(collect(child, None, timeout, max_bytes_per_stream, &cancel).await)
         }
     }
 
     async fn sudo_status(&self, timeout: Duration) -> Result<SudoStatus, SshError> {
-        if cfg!(windows) {
+        if cfg!(windows) && self.distribution.is_none() {
             return Ok(SudoStatus::Unavailable);
         }
-        let child = spawn(SUDO_PROBE, false)?;
+        let child = spawn(SUDO_PROBE, false, self.distribution.as_deref())?;
         let out = collect(child, None, timeout, 4096, &CancellationToken::new()).await;
         Ok(SudoStatus::from_probe(
             out.exit_status,
@@ -79,7 +105,7 @@ impl RemoteExecutor for LocalExecutor {
         let password = password.map(|p| SecretValue::new(p.expose_for_transport().to_vec()));
         let cancel = cancel.clone();
         async move {
-            if cfg!(windows) {
+            if cfg!(windows) && self.distribution.is_none() {
                 return Err(SshError::Protocol(
                     "running as root is not supported on Windows".to_owned(),
                 ));
@@ -88,7 +114,7 @@ impl RemoteExecutor for LocalExecutor {
                 (Some(prompt), Some(secret)) => Some((PromptWatch::new(prompt), secret)),
                 _ => None,
             };
-            let child = spawn(&plan.command, feed.is_some())?;
+            let child = spawn(&plan.command, feed.is_some(), self.distribution.as_deref())?;
             let mut out = collect(child, feed, timeout, max_bytes_per_stream, &cancel).await;
             if let Some(prompt) = &plan.prompt {
                 out.stderr = strip_prompt(&out.stderr, prompt);
@@ -98,8 +124,8 @@ impl RemoteExecutor for LocalExecutor {
     }
 }
 
-fn spawn(command: &str, with_stdin: bool) -> Result<Child, SshError> {
-    let mut cmd = shell(command);
+fn spawn(command: &str, with_stdin: bool, distribution: Option<&str>) -> Result<Child, SshError> {
+    let mut cmd = shell(command, distribution);
     cmd.stdin(if with_stdin {
         Stdio::piped()
     } else {
@@ -248,7 +274,7 @@ mod tests {
 
     #[tokio::test]
     async fn runs_with_separate_streams_and_the_exit_status() {
-        let out = LocalExecutor
+        let out = LocalExecutor::default()
             .run(
                 "printf out; printf err >&2; exit 3",
                 LIMIT,
@@ -265,7 +291,7 @@ mod tests {
 
     #[tokio::test]
     async fn stdin_is_closed_so_a_reader_does_not_hang() {
-        let out = LocalExecutor
+        let out = LocalExecutor::default()
             .run("cat; echo done", LIMIT, 1024, &CancellationToken::new())
             .await
             .expect("run");
@@ -274,7 +300,7 @@ mod tests {
 
     #[tokio::test]
     async fn output_is_capped_and_a_timeout_kills_the_process() {
-        let out = LocalExecutor
+        let out = LocalExecutor::default()
             .run(
                 "yes | head -c 100000",
                 LIMIT,
@@ -286,7 +312,7 @@ mod tests {
         assert_eq!(out.stdout.len(), 1000);
         assert!(out.stdout_truncated);
 
-        let slow = LocalExecutor
+        let slow = LocalExecutor::default()
             .run(
                 "sleep 30",
                 Duration::from_millis(200),

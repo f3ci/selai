@@ -188,8 +188,9 @@ impl LlmClient {
     }
 
     /// Lists the model IDs the endpoint offers (`GET {base}/models`, or
-    /// `{base}/v1/models` for Anthropic). Doubles as the API key check: a 401 or
-    /// 403 becomes `PROVIDER_UNAUTHORIZED`. One attempt, no retries, and the
+    /// `{base}/v1/models` for Anthropic). A 401 or 403 becomes
+    /// `PROVIDER_UNAUTHORIZED`, but a public catalog does not verify chat access.
+    /// One attempt, no retries, and the
     /// body is capped so a misbehaving server cannot exhaust memory.
     pub async fn list_models(
         &self,
@@ -408,7 +409,11 @@ fn status_error(status: StatusCode, body: &str, key: Option<&str>) -> LlmError {
     match code {
         401 | 403 => LlmError::new(
             ErrorCode::ProviderUnauthorized,
-            "the provider rejected the API key or the account lacks access",
+            if detail.trim().is_empty() {
+                format!("the provider rejected the API key or the account lacks access (HTTP {code})")
+            } else {
+                format!("the provider rejected the API key or the account lacks access (HTTP {code}): {detail}")
+            },
         ),
         429 => LlmError::new(ErrorCode::ProviderRateLimit, "the provider rate limit was reached; try again later"),
         300..=399 => LlmError::protocol(format!(

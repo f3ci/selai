@@ -67,6 +67,16 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('TerminalPane', () => {
+  it('connects using the selected WSL host identity and labels its environment', async () => {
+    const wsl = { ...host, id: 'wsl-debian', kind: 'local', label: 'WSL - Debian', wslDistribution: 'Debian' } as ipc.HostView;
+    const connect = vi.spyOn(ipc, 'terminalConnect').mockResolvedValue('wsl-session');
+    vi.spyOn(ipc, 'terminalDisconnect').mockResolvedValue();
+    render(<TerminalPane host={wsl} hidden={false} />);
+    await screen.findByText('Connected');
+    expect(connect).toHaveBeenCalledWith('wsl-debian', expect.any(Number), expect.any(Number), expect.any(Function));
+    expect(screen.getByText('WSL · Debian')).toBeInTheDocument();
+  });
+
   it('blocks input during standby and resumes the same terminal after unlock', async () => {
     let deliver: (event: ipc.TerminalEvent) => void = () => {};
     const connect = vi.spyOn(ipc, 'terminalConnect').mockImplementation((_host, _cols, _rows, onEvent) => {

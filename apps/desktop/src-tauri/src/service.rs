@@ -858,7 +858,14 @@ impl Services {
         let rows = bounded_dim(rows)?;
         let (host, pins) = self.active_host_and_pins(id)?;
         if host.is_local {
-            return self.open_local_terminal(id, cols, rows, sink, flow, slot);
+            return self.open_local_terminal(
+                id,
+                host.wsl_distribution.as_deref(),
+                (cols, rows),
+                sink,
+                flow,
+                slot,
+            );
         }
         let auth = self.load_auth(id, &host)?;
 
@@ -928,8 +935,8 @@ impl Services {
     fn open_local_terminal(
         &self,
         id: HostId,
-        cols: u32,
-        rows: u32,
+        wsl_distribution: Option<&str>,
+        (cols, rows): (u32, u32),
         sink: EventSink,
         flow: Option<Arc<TerminalFlow>>,
         slot: Arc<tokio::sync::OwnedSemaphorePermit>,
@@ -944,6 +951,7 @@ impl Services {
         let terminals = Arc::clone(&self.terminal_registry.sessions);
         let ended = session_id.clone();
         let stop = crate::local_terminal::spawn_local_shell(
+            wsl_distribution,
             cols,
             rows,
             rx,
@@ -975,6 +983,18 @@ impl Services {
         Ok(HostView::from(
             self.lock_db()?.local_host().map_err(storage_error)?,
         ))
+    }
+
+    /// Native shell first, followed by the WSL distributions installed on Windows.
+    pub async fn local_hosts(&self) -> Result<Vec<HostView>, CommandError> {
+        let distributions = crate::wsl::distributions().await?;
+        let mut db = self.lock_db()?;
+        let mut hosts = vec![HostView::from(db.local_host().map_err(storage_error)?)];
+        for distribution in distributions {
+            let host = db.ensure_wsl_host(&distribution).map_err(storage_error)?;
+            hosts.push(HostView::from(host));
+        }
+        Ok(hosts)
     }
 
     pub async fn terminal_input(&self, session_id: &str, data: String) -> Result<(), CommandError> {

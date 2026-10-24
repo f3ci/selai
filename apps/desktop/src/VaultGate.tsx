@@ -6,6 +6,8 @@ import { ThemedSelect } from './ui/ThemedSelect';
 import { VaultWorkspacePhase } from './vaultWorkspace';
 import { WindowControls } from './App';
 import { UpdateButton } from './updates';
+import { Dialog } from './ui/Overlay';
+import { LockIcon, ShieldIcon } from './ui/icons';
 import './vault.css';
 
 export function VaultGate({ children }: { children: ReactNode }) {
@@ -175,7 +177,17 @@ export function VaultGate({ children }: { children: ReactNode }) {
       </section></main>
     </div>}
     {settings && unlocked && !recovery && <SecuritySettings status={status} close={() => { setSettings(false); setPhrase(''); setConfirm(''); }} refresh={refresh} />}
-    {lockChoice && <div className="vault-modal-backdrop"><section role="dialog" aria-modal="true" aria-labelledby="lock-title" className="vault-card"><h2 id="lock-title">Lock with work in progress?</h2><p>Terminal sessions will stay connected. Selai can finish the current AI command or cancel it immediately. New commands are blocked until you unlock.</p><p className="muted">A cancelled AI command may keep running on the server. Selai will not retry it automatically.</p>{feedback}<div className="vault-actions"><button disabled={busy} onClick={() => void lock(false)}>Finish current command, then lock</button><button disabled={busy} onClick={() => void lock(true)}>Lock now</button><button disabled={busy} onClick={() => setLockChoice(false)}>Keep working</button></div></section></div>}
+    {lockChoice && <Dialog title="Lock with work in progress?" icon={<LockIcon size={20} />}
+      closeDisabled={busy} onClose={() => { if (!busy) setLockChoice(false); }}
+      footer={<>
+        <button type="button" className="btn" data-autofocus disabled={busy} onClick={() => setLockChoice(false)}>Keep working</button>
+        <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void lock(true)}>Lock now</button>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void lock(false)}>Finish current command, then lock</button>
+      </>}>
+      <p>Terminal sessions will stay connected. Selai can finish the current AI command or cancel it immediately. New commands are blocked until you unlock.</p>
+      <p>A cancelled AI command may keep running on the server. Selai will not retry it automatically.</p>
+      {feedback}
+    </Dialog>}
   </>;
 }
 
@@ -211,7 +223,10 @@ function SecuritySettings({ status, close, refresh }: {status: VaultStatus; clos
   const [archive, setArchive] = useState('');
   useEffect(() => { void vaultAction('archives').then((result) => { const names = JSON.parse(result || '[]') as string[]; setArchives(names); setArchive(names[0] || ''); }).catch(() => undefined); }, []);
   async function exportArchive() { setBusy(true); setError(null); try { setMessage(await vaultAction('exportArchive', '', archive)); } catch (e) { setError(describeError(e)); } finally { setBusy(false); } }
-  return <div className="vault-modal-backdrop"><section role="dialog" aria-modal="true" aria-labelledby="security-title" className="vault-card vault-security"><h2 id="security-title">Vault security</h2>
+  return <Dialog title="Vault security" className="vault-security-dialog" icon={<ShieldIcon size={20} />}
+    closeDisabled={busy || code !== null} onClose={() => { if (!busy && code === null) close(); }}
+    footer={<button type="button" className="btn" disabled={busy || code !== null} onClick={close}>Close</button>}>
+    <div className="vault-settings">
     <p>Your database, credentials, private keys, chat, and history are encrypted. Locking releases the vault key and hides the workspace. Existing terminal sessions stay connected, with input blocked until you unlock. Close their tabs or quit Selai to disconnect.</p>
     <label>Auto-lock after inactivity<ThemedSelect label="Auto-lock timeout" disabled={busy} value={String(status.timeoutMinutes)} options={[5,15,30,60].map((n) => ({ value: String(n), label: `${n} minutes` }))} onChange={(value) => void act('timeout', Number(value))} /></label>
     <p className="muted">Only your interaction with Selai resets this timer. Terminal output and AI replies do not.</p>
@@ -230,6 +245,6 @@ function SecuritySettings({ status, close, refresh }: {status: VaultStatus; clos
       <p className="muted">Restore a backup from the setup screen on a fresh Selai installation. Keep the backup and recovery key in separate locations.</p>
     </>}
     {error && <p role="alert" className="vault-error">{error}</p>}{message && <p role="status" className="vault-notice">{message}</p>}
-    <button disabled={busy || code !== null} onClick={close}>Close</button>
-  </section></div>;
+    </div>
+  </Dialog>;
 }

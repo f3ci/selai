@@ -97,7 +97,7 @@ fn scalar(db: &Database, sql: &str) -> String {
 #[test]
 fn fresh_database_is_at_latest_version() {
     let db = db();
-    assert_eq!(db.schema_version().expect("version"), 10);
+    assert_eq!(db.schema_version().expect("version"), 11);
     let tables: i64 = db
         .conn()
         .query_row(
@@ -140,7 +140,7 @@ fn file_database_uses_wal_and_survives_reopen() {
         insert_host(&db, "00000000-0000-4000-8000-000000000001", "web").expect("insert");
     }
     let db = Database::open(&path).expect("reopen is a no-op migration");
-    assert_eq!(db.schema_version().expect("version"), 10);
+    assert_eq!(db.schema_version().expect("version"), 11);
     assert_eq!(scalar(&db, "PRAGMA foreign_keys"), "1");
     assert_eq!(
         scalar(&db, "SELECT label FROM hosts WHERE kind = 'ssh'"),
@@ -219,7 +219,7 @@ fn newer_schema_is_refused_not_downgraded() {
         err,
         StorageError::SchemaTooNew {
             found: 99,
-            supported: 10
+            supported: 11
         }
     ));
 }
@@ -576,7 +576,7 @@ fn existing_v2_database_upgrades_in_place_and_keeps_its_rows() {
     }
 
     let db = Database::open(&path).expect("upgrade on open");
-    assert_eq!(db.schema_version().expect("version"), 10);
+    assert_eq!(db.schema_version().expect("version"), 11);
     assert_eq!(
         scalar(&db, "SELECT COUNT(*) FROM hosts WHERE kind = 'ssh'"),
         "1"

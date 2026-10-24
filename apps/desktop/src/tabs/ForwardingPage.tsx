@@ -252,10 +252,11 @@ export function ForwardingPage({ visible }: { visible: boolean }) {
       {deleting && (
         <Dialog
           title={`Delete ${deleting.profile.name}?`}
+          tone="danger" icon={<TrashIcon size={20} />}
           onClose={() => setDeleting(null)}
           footer={
             <>
-              <button className="btn" onClick={() => setDeleting(null)}>
+              <button className="btn" data-autofocus onClick={() => setDeleting(null)}>
                 Cancel
               </button>
               <button className="btn btn-danger" onClick={() => void remove()}>

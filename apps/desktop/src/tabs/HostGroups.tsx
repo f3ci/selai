@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { describeError, groupCreate, groupDelete, groupRename, type GroupView } from '../ipc';
 import { Drawer } from '../ui/Overlay';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { EditIcon, FolderIcon, PlusIcon, TrashIcon } from '../ui/icons';
 
 export function HostGroups({ groups, onChanged, onClose, createOnly = false }: {
@@ -14,6 +15,7 @@ export function HostGroups({ groups, onChanged, onClose, createOnly = false }: {
   const [renamed, setRenamed] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<GroupView | null>(null);
 
   async function change(action: () => Promise<unknown>, closeAfter = false) {
     setBusy(true); setError(null);
@@ -53,14 +55,17 @@ export function HostGroups({ groups, onChanged, onClose, createOnly = false }: {
           <span className="grow" title={group.name}>{group.name}</span>
           <button className="icon-btn" type="button" aria-label={`Rename ${group.name}`} disabled={busy}
             onClick={() => { setRenaming(group.id); setRenamed(group.name); }}><EditIcon size={14} /></button>
-          <button className="icon-btn" type="button" aria-label={`Delete ${group.name}`} disabled={busy} onClick={() => {
-            if (window.confirm(`Delete group “${group.name}”? Its profiles will move to Ungrouped; no hosts or credentials will be deleted.`)) {
-              void change(() => groupDelete(group.id));
-            }
-          }}><TrashIcon size={14} /></button>
+          <button className="icon-btn" type="button" aria-label={`Delete ${group.name}`} disabled={busy}
+            onClick={() => setDeleting(group)}><TrashIcon size={14} /></button>
         </>}
       </div>)}
     </div>}
     <p className="hint">Drag profiles onto a group or Ungrouped in the sidebar to move them. Deleting a group keeps its profiles and history.</p>
+    {deleting && <ConfirmDialog title="Delete SSH group?" icon={<TrashIcon size={20} />}
+      confirmLabel="Delete group" pendingLabel="Deleting…" onClose={() => setDeleting(null)}
+      onConfirm={async () => { await groupDelete(deleting.id); await onChanged(); }}>
+      <p>Delete the group <strong>{deleting.name}</strong>?</p>
+      <p>Its profiles will move to Ungrouped. Hosts, credentials, and history will be kept.</p>
+    </ConfirmDialog>}
   </Drawer>;
 }

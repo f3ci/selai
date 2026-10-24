@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   describeError,
   providerDelete,
@@ -16,6 +16,7 @@ import {
 import { Field } from '../ui/Field';
 import { ThemedSelect } from '../ui/ThemedSelect';
 import { Drawer } from '../ui/Overlay';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { AlertIcon, BoltIcon, CheckIcon, CloseIcon, EditIcon, KeyIcon, PlugIcon, PlusIcon, TrashIcon } from '../ui/icons';
 
 const PROTOCOLS: { value: ProviderProtocolName; label: string }[] = [
@@ -37,6 +38,7 @@ interface FormState {
   protocol: ProviderProtocolName;
   baseUrl: string;
   modelId: string;
+  modelInput: 'list' | 'manual';
   timeoutSeconds: string;
   maxOutputTokens: string;
   keyConfigured: boolean;
@@ -49,6 +51,7 @@ const EMPTY: FormState = {
   protocol: 'openai_chat',
   baseUrl: '',
   modelId: '',
+  modelInput: 'list',
   timeoutSeconds: '120',
   maxOutputTokens: '4096',
   keyConfigured: false,
@@ -64,6 +67,7 @@ function fromProvider(p: ProviderView): FormState {
     protocol: p.protocol,
     baseUrl: p.baseUrl,
     modelId: p.modelId,
+    modelInput: p.modelId === 'default' ? 'list' : 'manual',
     timeoutSeconds: String(p.timeoutSeconds),
     maxOutputTokens: String(p.maxOutputTokens),
     keyConfigured: p.keyConfigured,
@@ -106,6 +110,8 @@ export function ProvidersPanel() {
   const [formError, setFormError] = useState<string | null>(null);
   const [runs, setRuns] = useState<Record<string, TestRun>>({});
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState<ProviderView | null>(null);
+  const checkRequest = useRef(0);
 
   async function refresh() {
     try {
@@ -125,6 +131,7 @@ export function ProvidersPanel() {
   }, []);
 
   function openForm(state: FormState) {
+    checkRequest.current += 1;
     setForm(state);
     setApiKey('');
     setClearKey(false);
@@ -134,12 +141,14 @@ export function ProvidersPanel() {
 
   /** Any change to where or how we connect makes an earlier check stale. */
   function changeEndpoint(next: FormState) {
+    checkRequest.current += 1;
     setForm(next);
     setCheck({ state: 'idle' });
   }
 
   async function checkKey() {
     if (!form) return;
+    const request = ++checkRequest.current;
     setCheck({ state: 'checking' });
     try {
       const result = await providerModels({
@@ -149,34 +158,45 @@ export function ProvidersPanel() {
         allowInsecureHttp: isRemotePlainHttp(form.baseUrl) && form.allowInsecureHttp,
         apiKey: apiKey || undefined,
       });
+      if (request !== checkRequest.current) return;
       setCheck({ state: 'ok', models: result.models, latencyMs: result.latencyMs });
-      // Keep the model used by the provider test if it is still available;
-      // otherwise use the first model as the profile's tool-test model.
-      setForm((prev) =>
-        prev && result.models.length > 0 && !result.models.includes(prev.modelId)
-          ? { ...prev, modelId: result.models[0] ?? prev.modelId }
-          : prev,
-      );
+      // Discovery must never replace a model entered manually.
+      setForm((prev) => {
+        if (!prev) return prev;
+        if (result.models.length === 0) return { ...prev, modelInput: 'manual' };
+        if (prev.modelInput === 'list' && !result.models.includes(prev.modelId)) {
+          return { ...prev, modelId: result.models[0] ?? prev.modelId };
+        }
+        return prev;
+      });
     } catch (err) {
+      if (request !== checkRequest.current) return;
       setCheck({ state: 'fail', message: describeError(err) });
+      setForm((prev) => prev ? { ...prev, modelInput: 'manual' } : prev);
     }
   }
 
   function applyTemplate(id: string) {
     const t = templates.find((x) => x.id === id);
     if (!t) return;
+    checkRequest.current += 1;
+    setCheck({ state: 'idle' });
     setForm((prev) => ({
       ...(prev ?? EMPTY),
       protocol: t.protocol,
       baseUrl: t.defaultBaseUrl,
       note: t.note,
-      name: prev?.name || t.displayName,
+      name: prev?.name || (t.id === 'custom' ? '' : t.displayName),
     }));
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!form) return;
+    if (form.modelInput === 'manual' && !form.modelId.trim()) {
+      setFormError('Enter a model ID.');
+      return;
+    }
     const remoteHttp = isRemotePlainHttp(form.baseUrl);
     const input: ProviderInput = {
       id: form.id,
@@ -184,8 +204,7 @@ export function ProvidersPanel() {
       name: form.name.trim(),
       protocol: form.protocol,
       baseUrl: form.baseUrl.trim(),
-      // The profile retains a model only as the target for its tool-calling
-      // verification; ordinary chat model choice lives in the composer.
+      // The saved model is also the fallback when discovery is unavailable.
       modelId: form.modelId.trim() || 'default',
       timeoutSeconds: Number(form.timeoutSeconds),
       maxOutputTokens: Number(form.maxOutputTokens),
@@ -238,13 +257,8 @@ export function ProvidersPanel() {
   }
 
   async function remove(provider: ProviderView) {
-    if (!window.confirm(`Delete provider ${provider.name} and its saved key?`)) return;
-    try {
-      await providerDelete(provider.id);
-      await refresh();
-    } catch (err) {
-      setError(describeError(err));
-    }
+    await providerDelete(provider.id);
+    await refresh();
   }
 
   const keyPlaceholder = form?.keyConfigured ? '•••• saved (leave blank to keep)' : '';
@@ -255,7 +269,7 @@ export function ProvidersPanel() {
       <header className="page-head">
         <div className="grow">
           <h1>AI Providers</h1>
-          <p>Connect a provider and test it here. Choose its model from the chat composer.</p>
+          <p>Connect a provider, choose its default model, and test it here.</p>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => openForm({ ...EMPTY })}>
           <PlusIcon /> Add provider
@@ -303,6 +317,7 @@ export function ProvidersPanel() {
                       {STATUS_TEXT[p.toolCalling.status]}
                     </span>
                     <span className="badge">{PROTOCOLS.find((x) => x.value === p.protocol)?.label}</span>
+                    <span className="badge">Model: {p.modelId}</span>
                     {insecure && (
                       <span className="badge" data-tone="warning">
                         Plain HTTP
@@ -318,7 +333,7 @@ export function ProvidersPanel() {
                   <button type="button" className="icon-btn" aria-label={`Edit ${p.name}`} title="Edit" onClick={() => openForm(fromProvider(p))}>
                     <EditIcon />
                   </button>
-                  <button type="button" className="icon-btn" aria-label={`Delete ${p.name}`} title="Delete" onClick={() => void remove(p)}>
+                  <button type="button" className="icon-btn" aria-label={`Delete ${p.name}`} title="Delete" onClick={() => setDeleting(p)}>
                     <TrashIcon />
                   </button>
                 </div>
@@ -333,6 +348,12 @@ export function ProvidersPanel() {
           );
         })}
       </ul>
+
+      {deleting && <ConfirmDialog title="Delete provider?" icon={<TrashIcon size={20} />}
+        confirmLabel="Delete provider" pendingLabel="Deleting…" onConfirm={() => remove(deleting)} onClose={() => setDeleting(null)}>
+        <p>Delete <strong>{deleting.name}</strong> and its saved API key?</p>
+        <p>This provider will no longer be available in the AI chat. This action cannot be undone.</p>
+      </ConfirmDialog>}
 
       {form && (
         <Drawer
@@ -360,10 +381,10 @@ export function ProvidersPanel() {
               <Field label="Start from a template" hint={form.note || undefined}>
                 <ThemedSelect label="Provider template" value="" placeholder="Choose…" options={templates.map((t) => ({ value: t.id, label: t.displayName }))} onChange={applyTemplate} />
               </Field>
-              <label className="field">
-                Name
-                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              </label>
+              <Field label="Name" hint="Give each provider profile its own name, including multiple Custom profiles.">
+                <input required value={form.name} placeholder="e.g. Zen Personal or Zen Work"
+                  onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </Field>
               <label className="field">
                 Protocol
                 <ThemedSelect label="Protocol" value={form.protocol} options={PROTOCOLS.map((p) => ({ value: p.value, label: p.label }))}
@@ -405,6 +426,7 @@ export function ProvidersPanel() {
                   value={apiKey}
                   placeholder={keyPlaceholder}
                   onChange={(e) => {
+                    checkRequest.current += 1;
                     setApiKey(e.target.value);
                     setCheck({ state: 'idle' });
                   }}
@@ -423,12 +445,13 @@ export function ProvidersPanel() {
                   onClick={() => void checkKey()}
                   disabled={check.state === 'checking' || !form.baseUrl.trim()}
                 >
-                  <KeyIcon size={13} /> {check.state === 'checking' ? 'Checking…' : 'Check API key'}
+                  <KeyIcon size={13} /> {check.state === 'checking' ? 'Loading…' : 'Load models'}
                 </button>
                 {check.state === 'ok' && (
                   <span role="status" className="key-check-result" data-tone="success">
-                    <CheckIcon size={13} /> Key works · {check.models.length} model
-                    {check.models.length === 1 ? '' : 's'} available · {check.latencyMs} ms
+                    <CheckIcon size={13} /> {check.models.length === 0
+                      ? `No models returned · ${check.latencyMs} ms. Enter a model ID manually.`
+                      : `${check.models.length} model${check.models.length === 1 ? '' : 's'} listed · ${check.latencyMs} ms`}
                   </span>
                 )}
                 {check.state === 'fail' && (
@@ -437,10 +460,43 @@ export function ProvidersPanel() {
                   </span>
                 )}
                 {check.state === 'idle' && (
-                  <span className="hint">Checks the key and loads the model list.</span>
+                  <span className="hint">Loads the model catalog using the entered or saved key.</span>
                 )}
               </div>
-              <p className="hint">Choose a provider and model in the chat composer. The first available model is used for the tool calling test.</p>
+              <p className="hint">Some providers publish their model catalog without checking your key. Save the profile and run Test to verify access to the selected model.</p>
+              <div role="group" aria-label="Model input" className="field">
+                <span>Model input</span>
+                <label className="check">
+                  <input type="radio" name="model-input" checked={form.modelInput === 'list'}
+                    onChange={() => {
+                      const models = check.state === 'ok' ? check.models : [];
+                      setForm({ ...form, modelInput: 'list',
+                        modelId: models.includes(form.modelId) ? form.modelId : models[0] ?? form.modelId });
+                    }} />
+                  <span>Choose from API</span>
+                </label>
+                <label className="check">
+                  <input type="radio" name="model-input" checked={form.modelInput === 'manual'}
+                    onChange={() => setForm({ ...form, modelInput: 'manual' })} />
+                  <span>Enter manually</span>
+                </label>
+              </div>
+              {form.modelInput === 'manual' ? (
+                <Field label="Model ID" hint="Enter the exact model ID supported by your provider, even if the API cannot list it.">
+                  <input required value={form.modelId} placeholder="e.g. your-model-id"
+                    onChange={(e) => setForm({ ...form, modelId: e.target.value })} />
+                </Field>
+              ) : (
+                <div className="field">
+                  <span>Model</span>
+                  <ThemedSelect label="Model" value={form.modelId}
+                    placeholder="Load models to choose a model"
+                    options={check.state === 'ok' ? check.models.map((model) => ({ value: model, label: model })) : []}
+                    onChange={(modelId) => setForm({ ...form, modelId })} />
+                  <span className="hint">If no models are returned or the check fails, choose Enter manually.</span>
+                </div>
+              )}
+              <p className="hint">This model is used for the tool calling test and as the default in the chat composer.</p>
             </div>
             <div className="form-section">
               <h3>Limits</h3>

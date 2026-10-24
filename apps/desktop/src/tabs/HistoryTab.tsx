@@ -9,7 +9,6 @@ import {
   historySummary,
   historyTasks,
   hostList,
-  localHost,
   preferencesGet,
   preferencesSet,
   taskTimeline,
@@ -23,8 +22,11 @@ import {
 } from '../ipc';
 import { formatCompact, formatCount, formatDuration, formatWhen, sumTokens } from '../ui/format';
 import { HostAvatar } from '../ui/HostAvatar';
+import { LocalEnvironmentAvatar } from '../ui/LocalEnvironmentIcon';
 import { collectPages } from '../ui/collectPages';
+import { loadLocalTargets } from '../ui/localTargets';
 import { Drawer } from '../ui/Overlay';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { ChevronIcon, ClockIcon, RefreshIcon, SearchIcon, TerminalIcon } from '../ui/icons';
 import { SelaiLogo } from '../ui/SelaiLogo';
 import { ThemedSelect } from '../ui/ThemedSelect';
@@ -320,13 +322,14 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
   const [commandSort, setCommandSort] = useState<'latest' | 'oldest'>('latest');
+  const [purging, setPurging] = useState<{ id: string; label: string } | null>(null);
 
   useEffect(() => {
     let active = true;
-    Promise.all([localHost().catch(() => null), collectPages((cursor) => hostList(undefined, true, cursor))])
+    Promise.all([loadLocalTargets().catch(() => []), collectPages((cursor) => hostList(undefined, true, cursor))])
       .then(([local, items]) => {
         if (!active) return;
-        const all = [...items, ...(local ? [local] : [])];
+        const all = [...items, ...local];
         setHosts(all);
         setHostId((current) => current || all[0]?.id || '');
       })
@@ -454,15 +457,10 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
     }
   }
 
-  async function purge() {
-    if (!window.confirm('Delete stored command output for this host? Command history stays.')) return;
-    try {
-      const result = await historyPurgeOutput(hostId);
-      setNotice(`Output cleared for ${result.executions} command(s). Command records are kept.`);
-      await search(false);
-    } catch (err) {
-      setError(describeError(err));
-    }
+  async function purge(id: string) {
+    const result = await historyPurgeOutput(id);
+    setNotice(`Output cleared for ${result.executions} command(s). Command records are kept.`);
+    await search(false);
   }
 
   async function saveRetention() {
@@ -492,7 +490,7 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
   return (
     <section aria-label="AI history" className="page history-page">
       <header className="page-head">
-        {host && <HostAvatar label={host.label} />}
+        {host && (host.kind === 'local' ? <LocalEnvironmentAvatar host={host} size={24} /> : <HostAvatar label={host.label} />)}
         <div className="grow">
           <h1>History</h1>
           <p>What the AI Agent did on a host: requests, commands and token usage. Archived hosts keep their history.</p>
@@ -544,7 +542,7 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
         <button type="button" className="btn btn-sm" onClick={exportHistory} disabled={!hostId}>
           Export encrypted
         </button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={purge} disabled={!hostId}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPurging({ id: hostId, label: hosts.find((host) => host.id === hostId)?.label ?? 'this host' })} disabled={!hostId}>
           Clear stored output
         </button>
       </div>
@@ -721,6 +719,11 @@ export function HostHistoryTab({ visible }: { visible: boolean }) {
         <span className="muted">Tasks stop when either limit is reached. Applies to tasks started after saving.</span>
       </div>
 
+      {purging && <ConfirmDialog title="Clear stored output?" confirmLabel="Clear output" pendingLabel="Clearing…"
+        onConfirm={() => purge(purging.id)} onClose={() => setPurging(null)}>
+        <p>Delete stored command output for <strong>{purging.label}</strong>?</p>
+        <p>Command history will be kept. Deleted output cannot be recovered.</p>
+      </ConfirmDialog>}
       {openTask && <TaskDrawer task={openTask} onClose={() => setOpenTask(null)} />}
 
       {selected && (

@@ -522,3 +522,66 @@ async fn plain_chat_streams_a_reply_without_tools() {
     assert_eq!(text, "Use `ss -tlnp`.");
     assert_eq!(usage, Some((Some(42), Some(7))));
 }
+
+#[tokio::test]
+async fn public_catalog_does_not_verify_chat_access_and_test_uses_the_saved_key_and_model() {
+    let h = harness();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": [{"id": "restricted-model"}]
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("authorization", format!("Bearer {KEY}").as_str()))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .set_delay(std::time::Duration::from_millis(30))
+                .set_body_json(
+                    json!({"error": {"message": format!("Model access denied: {KEY}")}}),
+                ),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let base = format!("{}/v1", server.uri());
+    let models = h
+        .services
+        .provider_models(ProviderModelsInput {
+            id: None,
+            protocol: "openai_chat".into(),
+            base_url: base.clone(),
+            allow_insecure_http: None,
+            api_key: Some(KEY.into()),
+        })
+        .await
+        .expect("public catalog loads");
+    assert_eq!(models.models, vec!["restricted-model"]);
+    let saved = h
+        .services
+        .provider_save(input(&base, "restricted-model", Some(KEY)))
+        .expect("save");
+    assert_eq!(saved.tool_calling.status, "not_verified");
+    let result = h
+        .services
+        .provider_test(&saved.id, "connectivity")
+        .await
+        .expect("test runs");
+    assert!(!result.ok);
+    assert_eq!(result.code, Some(ErrorCode::ProviderUnauthorized));
+    assert!(result.message.contains("HTTP 403"));
+    assert!(result.message.contains("Model access denied"));
+    assert!(!result.message.contains(KEY));
+    assert!(result.latency_ms >= 30);
+    let requests = server.received_requests().await.expect("requests");
+    let post = requests
+        .iter()
+        .find(|request| request.method == "POST")
+        .expect("chat request");
+    let body: Value = serde_json::from_slice(&post.body).expect("json");
+    assert_eq!(body["model"], "restricted-model");
+    assert!(!String::from_utf8_lossy(&post.body).contains(KEY));
+}
