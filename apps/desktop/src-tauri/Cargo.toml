@@ -18,16 +18,16 @@ base64 = "0.22"
 keepass = "0.15.2"
 zeroize = "1"
 portable-pty = "0.9.0"
-selai-agent = { version = "0.4.1", path = "../../../crates/selai-agent" }
-selai-audit = { version = "0.4.1", path = "../../../crates/selai-audit" }
-selai-domain = { version = "0.4.1", path = "../../../crates/selai-domain" }
-selai-llm = { version = "0.4.1", path = "../../../crates/selai-llm" }
-selai-policy = { version = "0.4.1", path = "../../../crates/selai-policy" }
-selai-secrets = { version = "0.4.1", path = "../../../crates/selai-secrets" }
-selai-ssh = { version = "0.4.1", path = "../../../crates/selai-ssh" }
-selai-storage = { version = "0.4.1", path = "../../../crates/selai-storage" }
-selai-vault = { version = "0.4.1", path = "../../../crates/selai-vault" }
-selai-platform = { version = "0.4.1", path = "../../../crates/selai-platform" }
+selai-agent = { version = "0.4.2", path = "../../../crates/selai-agent" }
+selai-audit = { version = "0.4.2", path = "../../../crates/selai-audit" }
+selai-domain = { version = "0.4.2", path = "../../../crates/selai-domain" }
+selai-llm = { version = "0.4.2", path = "../../../crates/selai-llm" }
+selai-policy = { version = "0.4.2", path = "../../../crates/selai-policy" }
+selai-secrets = { version = "0.4.2", path = "../../../crates/selai-secrets" }
+selai-ssh = { version = "0.4.2", path = "../../../crates/selai-ssh" }
+selai-storage = { version = "0.4.2", path = "../../../crates/selai-storage" }
+selai-vault = { version = "0.4.2", path = "../../../crates/selai-vault" }
+selai-platform = { version = "0.4.2", path = "../../../crates/selai-platform" }
 rfd = "0.15"
 fs2 = "0.4.3"
 sha2 = "0.11"
@@ -49,6 +49,6 @@ tempfile = "3.27.0"
 workspace = true
 
 [dev-dependencies]
-selai-testkit = { version = "0.4.1", path = "../../../crates/selai-testkit" }
+selai-testkit = { version = "0.4.2", path = "../../../crates/selai-testkit" }
 tokio = { version = "1.53.3", features = ["rt-multi-thread"] }
 wiremock = "0.6"

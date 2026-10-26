@@ -9,14 +9,20 @@ of every platform and live AI provider. Without optional signing secrets,
 Windows and Linux installers are unsigned; macOS apps use ad-hoc signing
 and are not notarized.
 
-## New in 0.4.1
+## New in 0.4.2
 
 The release workflow now builds separate Apple Silicon (`aarch64`) and Intel
 (`x64`) installers and checks each app's architecture and signature before
-upload. App ZIP filenames include the architecture. Releases through v0.4.0 contain only Apple Silicon packages. On an Intel Mac,
-download `Selai_0.4.1_x64.dmg`; on an M1 or newer Mac, choose the `aarch64` DMG.
+upload. App ZIP filenames include the architecture. Releases through v0.4.0
+contain only Apple Silicon packages. On an Intel Mac,
+download `Selai_0.4.2_x64.dmg`; on an M1 or newer Mac, choose the `aarch64` DMG.
 Ad-hoc signing still requires approval in macOS Privacy & Security settings.
 Interactive testing on each Mac model remains unverified.
+
+This release also updates `crypto-bigint` to 0.7.10 and `ctutils` to 0.4.6,
+resolving [RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387).
+Publication now requires Rust and frontend dependency audits and packaging
+regression tests to pass.
 
 ## New in 0.4.0
 
@@ -217,7 +223,7 @@ is not established; automated SSH network tests use local OpenSSH fixtures.
 | Linux (x64), Debian/Ubuntu | `selai_<version>_amd64.deb` | `sudo apt install ./selai_<version>_amd64.deb` |
 | Linux (x64), any distro | `Selai_<version>_amd64.AppImage` | `chmod +x` it, then run. Needs a Secret Service keyring (GNOME Keyring or KWallet). |
 | macOS (Apple silicon) | `Selai_<version>_aarch64.dmg` | Ad-hoc signed unless Apple signing is configured: attempt to open, then use **System Settings → Privacy & Security → Open Anyway**. |
-| macOS (Intel) | `Selai_<version>_x64.dmg` | Available from 0.4.1; attempt to open, then use **System Settings → Privacy & Security → Open Anyway** for ad-hoc builds. |
+| macOS (Intel) | `Selai_<version>_x64.dmg` | Available from 0.4.2; attempt to open, then use **System Settings → Privacy & Security → Open Anyway** for ad-hoc builds. |
 
 ## Check the download
 

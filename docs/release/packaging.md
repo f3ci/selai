@@ -56,7 +56,8 @@ two macOS artifacts can be published together without filename collisions.
 - **Manual:** Actions tab, "Release packaging", "Run workflow", choose the branch.
 - **Tag:** push a tag that matches `v*`. This also runs the attestation job and,
   after it, the `publish` job: it checks every platform's `SHA256SUMS`, then
-  creates a GitHub release named after the tag with all installers, one combined
+  requires the release dependency audits and packaging regression tests to pass,
+  then creates a GitHub release named after the tag with all installers, one combined
   `SHA256SUMS`, the SBOMs as `sbom-cyclonedx.tar.gz`, and
   `docs/release/RELEASE_NOTES.md` as its text. The release is published even
   when the attestation job fails (attestations on a private repository need
@@ -135,7 +136,7 @@ Notes:
 For an M1 or newer Apple Silicon Mac, download `Selai_<version>_aarch64.dmg`.
 For an Intel Mac, download `Selai_<version>_x64.dmg`. Check the processor in
 **Apple menu → About This Mac**. Published releases through v0.4.0 contain only
-Apple Silicon packages. From v0.4.1, the workflow also builds Intel packages
+Apple Silicon packages. From v0.4.2, the workflow also builds Intel packages
 on a native Intel runner and checks their architecture before publication.
 
 - **Application is not supported on this Mac:** verify that the download matches
