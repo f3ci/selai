@@ -36,6 +36,7 @@ jobs:
       - run: pnpm build
       - run: node ../../scripts/ci/check-size-budget.mjs
       - run: node --test ../../scripts/ci/check-size-budget.test.mjs
+      - run: node --test ../../scripts/release/packaging.test.mjs
 
   rust:
     name: Rust (${{ matrix.os }})

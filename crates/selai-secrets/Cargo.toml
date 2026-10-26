@@ -7,7 +7,7 @@ repository.workspace = true
 
 [dependencies]
 keyring = "4.2"
-selai-domain = { version = "0.4.0", path = "../selai-domain" }
+selai-domain = { version = "0.4.1", path = "../selai-domain" }
 thiserror = "2"
 zeroize = "1"
 

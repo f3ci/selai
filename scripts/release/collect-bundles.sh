@@ -3,16 +3,21 @@
 # and writes SHA256SUMS for them. Linux and macOS only; Windows uses
 # collect-bundles.ps1.
 #
-# Usage: scripts/release/collect-bundles.sh <bundle-dir> <stage-dir>
+# Usage: scripts/release/collect-bundles.sh <bundle-dir> <stage-dir> [macos-arch]
 #   <bundle-dir> is the Tauri bundle output, e.g. target/release/bundle
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-  echo "usage: $0 <bundle-dir> <stage-dir>" >&2
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+  echo "usage: $0 <bundle-dir> <stage-dir> [macos-arch]" >&2
   exit 2
 fi
 bundle_dir=$1
 stage_dir=$2
+macos_arch=${3:-}
+case "$macos_arch" in
+  ""|aarch64|x64) ;;
+  *) echo "unsupported macOS package architecture: $macos_arch" >&2; exit 2 ;;
+esac
 
 if [[ ! -d "$bundle_dir" ]]; then
   echo "bundle dir not found: $bundle_dir" >&2
@@ -34,7 +39,11 @@ done
 # A macOS .app is a directory. Zip it so it is one uploadable, checksummable file.
 if command -v ditto >/dev/null 2>&1; then
   for app in "$bundle_dir"/macos/*.app; do
-    ditto -c -k --sequesterRsrc --keepParent "$app" "$stage_dir/$(basename "$app").zip"
+    archive_name=$(basename "$app")
+    if [[ -n "$macos_arch" ]]; then
+      archive_name="${archive_name%.app}_${macos_arch}.app"
+    fi
+    ditto -c -k --sequesterRsrc --keepParent "$app" "$stage_dir/$archive_name.zip"
   done
 fi
 

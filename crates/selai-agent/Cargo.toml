@@ -6,13 +6,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-selai-audit = { version = "0.4.0", path = "../selai-audit" }
-selai-domain = { version = "0.4.0", path = "../selai-domain" }
-selai-llm = { version = "0.4.0", path = "../selai-llm" }
-selai-policy = { version = "0.4.0", path = "../selai-policy" }
-selai-secrets = { version = "0.4.0", path = "../selai-secrets" }
-selai-ssh = { version = "0.4.0", path = "../selai-ssh" }
-selai-storage = { version = "0.4.0", path = "../selai-storage" }
+selai-audit = { version = "0.4.1", path = "../selai-audit" }
+selai-domain = { version = "0.4.1", path = "../selai-domain" }
+selai-llm = { version = "0.4.1", path = "../selai-llm" }
+selai-policy = { version = "0.4.1", path = "../selai-policy" }
+selai-secrets = { version = "0.4.1", path = "../selai-secrets" }
+selai-ssh = { version = "0.4.1", path = "../selai-ssh" }
+selai-storage = { version = "0.4.1", path = "../selai-storage" }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["sync", "time", "macros", "rt"] }

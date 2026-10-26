@@ -4,7 +4,8 @@ name: Release packaging
 # workflow artifacts, together with SHA256SUMS and CycloneDX SBOMs. On a `v*` tag
 # push it also attests build provenance and publishes a GitHub release with the
 # installers (0.x and suffixed versions as pre-releases). It never creates a tag
-# or a PR. Artifacts are UNSIGNED unless the optional signing secrets are set.
+# or a PR. macOS uses ad-hoc signing unless Apple signing secrets are set;
+# other installers are unsigned without their optional signing secrets.
 # See docs/release/packaging.md.
 
 on:
@@ -35,8 +36,14 @@ jobs:
             platform: linux
           - os: windows-latest
             platform: windows
-          - os: macos-latest
+          - os: macos-15
             platform: macos
+            macos_arch: arm64
+            macos_package_arch: aarch64
+          - os: macos-15-intel
+            platform: macos-intel
+            macos_arch: x86_64
+            macos_package_arch: x64
     steps:
       - uses: actions/checkout@v4
 
@@ -105,11 +112,13 @@ jobs:
           cargo test --release --locked -p selai-storage encrypted_memory_security_does_not_reenter_native_logging
           cargo test --release --locked -p selai-vault --test vault -- --test-threads=1
           cargo test --release --locked -p selai-desktop --lib vault_service::tests -- --test-threads=1
-      # Optional Apple signing and notarization. Tauri reads these variables itself.
+      # Optional Apple Developer ID signing and notarization. Without an identity,
+      # tauri.conf.json defaults to ad-hoc signing for Apple Silicon compatibility.
+      # Tauri reads these variables itself.
       # A variable whose secret is empty is unset, because Tauri treats an empty
       # string as configured and would then try to use it.
       - name: Build installers (macOS)
-        if: matrix.platform == 'macos'
+        if: runner.os == 'macOS'
         working-directory: apps/desktop
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -125,6 +134,16 @@ jobs:
           done
           pnpm tauri build --ci \
             -- --locked
+
+      - name: Verify macOS app architecture and signature before publishing installers
+        if: runner.os == 'macOS'
+        env:
+          EXPECTED_MACOS_ARCH: ${{ matrix.macos_arch }}
+        run: |
+          app=target/release/bundle/macos/Selai.app
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
+          lipo -verify_arch "$EXPECTED_MACOS_ARCH" "$app/Contents/MacOS/$executable"
+          codesign --verify --deep --strict --verbose=2 "$app"
 
       - name: Sign Windows installers (only when WINDOWS_CERTIFICATE is set)
         if: matrix.platform == 'windows' && steps.signing.outputs.windows == 'true'
@@ -145,7 +164,9 @@ jobs:
 
       - name: Stage installers and write SHA256SUMS (Linux and macOS)
         if: matrix.platform != 'windows'
-        run: bash scripts/release/collect-bundles.sh target/release/bundle stage
+        env:
+          MACOS_PACKAGE_ARCH: ${{ matrix.macos_package_arch }}
+        run: bash scripts/release/collect-bundles.sh target/release/bundle stage "$MACOS_PACKAGE_ARCH"
 
       - name: Stage installers and write SHA256SUMS (Windows)
         if: matrix.platform == 'windows'
@@ -214,6 +235,7 @@ jobs:
             release/installers-linux/*
             release/installers-windows/*
             release/installers-macos/*
+            release/installers-macos-intel/*
             release/sbom/*
 
   publish:

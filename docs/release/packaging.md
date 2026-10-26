@@ -5,8 +5,10 @@ the Selai desktop installers on Linux, Windows and macOS, and uploads them as
 workflow artifacts with checksums and SBOMs. On a `v*` tag push it also
 publishes a GitHub release (see "How to run it"). It never creates a tag or a PR.
 
-**Without the optional signing secrets (see below), every installer is UNSIGNED.**
-Windows will show SmartScreen warnings and macOS Gatekeeper will block the app.
+**Without the optional signing secrets (see below), Windows and Linux installers
+are unsigned; macOS apps use an ad-hoc signature.** Windows will show SmartScreen
+warnings. macOS apps are not notarized and still require approval in
+**System Settings → Privacy & Security → Open Anyway**.
 
 ## What the workflow produces
 
@@ -14,7 +16,8 @@ Windows will show SmartScreen warnings and macOS Gatekeeper will block the app.
 | --- | --- | --- | --- |
 | Linux | `ubuntu-latest` | `.deb`, `.AppImage` | `SHA256SUMS` |
 | Windows | `windows-latest` | `.msi` (WiX), `.exe` (NSIS setup) | `SHA256SUMS` |
-| macOS | `macos-latest` | `.dmg`, `.app` (zipped as `*.app.zip`) | `SHA256SUMS` |
+| macOS Apple Silicon | `macos-15` (ARM64) | `*_aarch64.dmg`, `*_aarch64.app.zip` | `SHA256SUMS` |
+| macOS Intel | `macos-15-intel` (x86_64) | `*_x64.dmg`, `*_x64.app.zip` | `SHA256SUMS` |
 
 Bundle targets:
 
@@ -41,8 +44,12 @@ The SBOM job runs on Linux and produces one artifact named `sbom`:
   which reads `pnpm-lock.yaml`. pnpm 10 has no `pnpm sbom` command, so cdxgen
   is used instead.
 
-Each platform job uploads one artifact: `installers-linux`, `installers-windows`
-or `installers-macos`. Each contains the installers and a `SHA256SUMS` file.
+Each platform job uploads one artifact: `installers-linux`, `installers-windows`,
+`installers-macos` (Apple Silicon), or `installers-macos-intel`. Each contains the
+installers and a `SHA256SUMS` file. macOS builds run natively on pinned ARM64 and
+Intel runner labels. Before upload, `lipo -verify_arch` checks the executable
+against the job's architecture. App ZIP names include the architecture so the
+two macOS artifacts can be published together without filename collisions.
 
 ## How to run it
 
@@ -62,7 +69,7 @@ or `installers-macos`. Each contains the installers and a `SHA256SUMS` file.
 
 Open the workflow run in the Actions tab. The artifacts are listed at the bottom
 of the run summary: `installers-linux`, `installers-windows`,
-`installers-macos`, `sbom`. Artifacts follow the repository's retention setting
+`installers-macos`, `installers-macos-intel`, `sbom`. Artifacts follow the repository's retention setting
 (90 days by default). Download them with the browser, or with
 `gh run download <run-id> -n installers-linux`.
 
@@ -113,9 +120,50 @@ Notes:
   package are not signed separately. Signing them would need a Tauri
   `bundle.windows.signCommand`.
 - Apple variables are unset when empty. Tauri would otherwise treat an empty
-  string as configured.
+  string as configured. `bundle.macOS.signingIdentity` defaults to `"-"` for
+  ad-hoc signing; a configured `APPLE_SIGNING_IDENTITY` overrides it. This avoids
+  the missing bundle signature that can cause Apple Silicon downloads to appear
+  damaged. Ad-hoc signing does not verify the developer or notarize the app.
+- The macOS packaging job runs `codesign --verify --deep --strict` on the built
+  app before staging or uploading installers. This checks signature integrity;
+  it does not verify Gatekeeper approval on a user's Mac.
 - Signing and notarization were not run. They are configured but unverified
   (see the table below).
+
+## macOS launch troubleshooting
+
+For an M1 or newer Apple Silicon Mac, download `Selai_<version>_aarch64.dmg`.
+For an Intel Mac, download `Selai_<version>_x64.dmg`. Check the processor in
+**Apple menu → About This Mac**. Published releases through v0.4.0 contain only
+Apple Silicon packages. From v0.4.1, the workflow also builds Intel packages
+on a native Intel runner and checks their architecture before publication.
+
+- **Application is not supported on this Mac:** verify that the download matches
+  the processor. An `aarch64` app cannot run on an Intel Mac. For diagnosis, run
+  `file /Applications/Selai.app/Contents/MacOS/selai-desktop` and
+  `sw_vers -productVersion`; also inspect `LSMinimumSystemVersion` in
+  `/Applications/Selai.app/Contents/Info.plist`. This is a compatibility error;
+  changing Gatekeeper settings or removing quarantine does not fix the CPU
+  architecture.
+
+- **Developer cannot be verified / Apple cannot check the app:** after checking
+  that the download is from the official release, copy Selai to Applications,
+  attempt to open it, then use **System Settings → Privacy & Security → Open
+  Anyway**. Ad-hoc releases still need this approval. Developer ID signing and
+  notarization are needed for normal verified distribution.
+- **App is damaged and cannot be opened:** check the installer against
+  `SHA256SUMS` and download it again if the checksum differs. Older releases
+  without bundle signing may show this on Apple Silicon. For diagnosis, run
+  `codesign --verify --deep --strict --verbose=2 /Applications/Selai.app`.
+  Rebuild and distribute a signed bundle if verification fails.
+- **App opens and immediately quits:** run
+  `/Applications/Selai.app/Contents/MacOS/selai-desktop` from Terminal and capture its
+  output and the Selai crash report in Console. This needs runtime diagnosis.
+
+See [Tauri macOS signing](https://v2.tauri.app/distribute/sign/macos/) and
+[Apple's opening instructions](https://support.apple.com/en-us/102445).
+The signature check and fallback configuration must still be exercised by a
+macOS release build; they cannot be validated by running the app on Linux.
 
 ## Update checks in the desktop app
 
@@ -151,7 +199,7 @@ the existing release installers and requires no additional release secrets.
 | Item | Status |
 | --- | --- |
 | Windows build (`.msi`, `.exe`) | Built successfully by the GitHub release workflow for `v0.3.1`; the native vault checks passed before upload. |
-| macOS build (`.dmg`, `.app.zip`) | Built successfully by the GitHub release workflow for `v0.3.1`. |
+| macOS build (`.dmg`, `.app.zip`) | Apple Silicon built successfully for `v0.3.1`. Intel packaging and the architecture/signature checks need their first native release build. |
 | Linux build (`.deb`, `.AppImage`) | Built successfully by the GitHub release workflow for `v0.3.1`. |
 | Windows signing (`sign-windows.ps1`) | Optional and runs only when the `WINDOWS_CERTIFICATE` secret is configured. |
 | Apple signing and notarization | Optional and runs only when the Apple signing secrets are configured. |
@@ -164,8 +212,9 @@ the existing release installers and requires no additional release secrets.
 
 ## Helper scripts
 
-- `scripts/release/collect-bundles.sh <bundle-dir> <stage-dir>`: Linux and macOS.
-  Copies installers, zips the `.app`, writes and checks `SHA256SUMS`.
+- `scripts/release/collect-bundles.sh <bundle-dir> <stage-dir> [macos-arch]`: Linux
+  and macOS. Copies installers, zips the `.app`, writes and checks `SHA256SUMS`.
+  macOS jobs pass `aarch64` or `x64` to keep ZIP names unique.
 - `scripts/release/collect-bundles.ps1`: the Windows version of the above.
 - `scripts/release/sign-windows.ps1`: Windows signing, only when secrets are set.
 - `scripts/release/generate-sbom.sh <out-dir>`: both SBOM kinds.

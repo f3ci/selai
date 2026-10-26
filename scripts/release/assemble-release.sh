@@ -5,7 +5,8 @@
 #
 # Usage: scripts/release/assemble-release.sh <artifacts-dir> <dist-dir>
 #   <artifacts-dir> holds installers-linux/, installers-windows/,
-#   installers-macos/ and sbom/, as actions/download-artifact writes them.
+#   installers-macos/, installers-macos-intel/ and sbom/, as
+#   actions/download-artifact writes them.
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
@@ -16,7 +17,7 @@ src=$1
 dist=$2
 mkdir -p "$dist"
 
-for platform in linux windows macos; do
+for platform in linux windows macos macos-intel; do
   dir="$src/installers-$platform"
   if [[ ! -f "$dir/SHA256SUMS" ]]; then
     echo "missing $dir/SHA256SUMS" >&2

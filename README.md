@@ -5,7 +5,7 @@
 <p align="center"><strong>A desktop SSH workbench with AI assistance, tunnels, and proxies.</strong><br>
 SSH profiles, terminals, AI chat, port forwarding, and proxies in one app. You choose where the assistant may work and approve its commands, with optional root approval for one request on one host.</p>
 
-<p align="center"><sub>Preview 0.4.0 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
+<p align="center"><sub>Preview 0.4.1 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
 
 <p align="center">
   <a href="#quick-demo">Demo</a> ·
@@ -37,12 +37,23 @@ never included in requests to an AI provider.
 - **Everything is recorded.** Each request, command, outcome, and token count is
   saved to History, with an audit record written before remote execution.
 
-> **Version 0.4.0 is a preview.** Automated coverage includes Linux SSH and agent
+> **Version 0.4.1 is a preview.** Automated coverage includes Linux SSH and agent
 > flows with an OpenSSH fixture and mock AI providers, plus Windows encryption
 > and vault checks in the release build profile. Full interactive SSH and live
 > provider coverage across all platforms is not established. See [current milestone evidence](docs/release/milestones.md)
 > and [known security limits](SECURITY.md) before using Selai with sensitive
 > systems.
+
+## New in 0.4.1
+
+- **Mac Intel installers:** download the `x64` build for Intel Macs or the
+  `aarch64` build for Apple Silicon. Earlier macOS releases only included Apple
+  Silicon builds, which cannot run on Intel Macs.
+- **macOS packaging checks:** verify each app's architecture and code signature
+  before upload, with ad-hoc signing when no Apple signing identity is configured.
+
+See the [0.4.1 release](https://github.com/f3ci/selai/releases/tag/v0.4.1) and
+[release notes](docs/release/RELEASE_NOTES.md).
 
 ## New in 0.4.0
 
@@ -473,7 +484,7 @@ Keep the old folder until you have verified the restored hosts and history.
 
 ### Install a preview build
 
-Download [Selai 0.3.3 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.3.3).
+Download [Selai 0.4.1 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.4.1).
 Builds are also available from the **Release packaging** workflow artifacts.
 Packages are provided for:
 
@@ -481,7 +492,8 @@ Packages are provided for:
 | --- | --- |
 | Windows x64 | `.exe` setup or `.msi` |
 | Linux x64 | `.deb` or `.AppImage` |
-| macOS Apple silicon | `.dmg` |
+| macOS Apple silicon | `*_aarch64.dmg` |
+| macOS Intel | `*_x64.dmg` (available from 0.4.1) |
 
 Check the downloaded file against its accompanying `SHA256SUMS`. Linux needs a
 Secret Service keyring such as GNOME Keyring or KWallet. Signing and

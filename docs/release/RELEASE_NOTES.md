@@ -5,7 +5,18 @@ model never receives SSH credentials, and every command it runs is recorded.
 **This is a preview release.** Automated tests cover Linux SSH/agent flows with
 fixtures and mock providers. Windows packaging also checks encryption and the
 vault in the release build profile. This is not complete interactive coverage
-of every platform and live AI provider. The installers are not code-signed.
+of every platform and live AI provider. Without optional signing secrets,
+Windows and Linux installers are unsigned; macOS apps use ad-hoc signing
+and are not notarized.
+
+## New in 0.4.1
+
+The release workflow now builds separate Apple Silicon (`aarch64`) and Intel
+(`x64`) installers and checks each app's architecture and signature before
+upload. App ZIP filenames include the architecture. Releases through v0.4.0 contain only Apple Silicon packages. On an Intel Mac,
+download `Selai_0.4.1_x64.dmg`; on an M1 or newer Mac, choose the `aarch64` DMG.
+Ad-hoc signing still requires approval in macOS Privacy & Security settings.
+Interactive testing on each Mac model remains unverified.
 
 ## New in 0.4.0
 
@@ -205,7 +216,8 @@ is not established; automated SSH network tests use local OpenSSH fixtures.
 | Windows 10/11 (x64) | `Selai_<version>_x64-setup.exe` (or the `.msi`) | SmartScreen: **More info → Run anyway**. Needs WebView2, which Windows 11 includes. |
 | Linux (x64), Debian/Ubuntu | `selai_<version>_amd64.deb` | `sudo apt install ./selai_<version>_amd64.deb` |
 | Linux (x64), any distro | `Selai_<version>_amd64.AppImage` | `chmod +x` it, then run. Needs a Secret Service keyring (GNOME Keyring or KWallet). |
-| macOS (Apple silicon) | `Selai_<version>_aarch64.dmg` | Unsigned: right-click the app → **Open** the first time. |
+| macOS (Apple silicon) | `Selai_<version>_aarch64.dmg` | Ad-hoc signed unless Apple signing is configured: attempt to open, then use **System Settings → Privacy & Security → Open Anyway**. |
+| macOS (Intel) | `Selai_<version>_x64.dmg` | Available from 0.4.1; attempt to open, then use **System Settings → Privacy & Security → Open Anyway** for ad-hoc builds. |
 
 ## Check the download
 

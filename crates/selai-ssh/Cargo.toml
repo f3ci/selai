@@ -13,8 +13,8 @@ zeroize = "1"
 russh-sftp = "2.3.0"
 openssl = { version = "0.10.81", features = ["vendored"] }
 russh = "0.64.1"
-selai-domain = { version = "0.4.0", path = "../selai-domain" }
-selai-secrets = { version = "0.4.0", path = "../selai-secrets" }
+selai-domain = { version = "0.4.1", path = "../selai-domain" }
+selai-secrets = { version = "0.4.1", path = "../selai-secrets" }
 thiserror = "2"
 tokio = { version = "1.53.3", features = ["rt", "net", "time", "sync", "io-util", "macros", "process"] }
 tokio-util = "0.7"
@@ -23,5 +23,5 @@ tokio-util = "0.7"
 workspace = true
 
 [dev-dependencies]
-selai-testkit = { version = "0.4.0", path = "../selai-testkit" }
+selai-testkit = { version = "0.4.1", path = "../selai-testkit" }
 tokio = { version = "1.53.3", features = ["rt-multi-thread"] }
