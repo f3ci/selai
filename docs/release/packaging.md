@@ -136,7 +136,7 @@ Notes:
 For an M1 or newer Apple Silicon Mac, download `Selai_<version>_aarch64.dmg`.
 For an Intel Mac, download `Selai_<version>_x64.dmg`. Check the processor in
 **Apple menu → About This Mac**. Published releases through v0.4.0 contain only
-Apple Silicon packages. From v0.4.2, the workflow also builds Intel packages
+Apple Silicon packages. From v0.4.3, the workflow also builds Intel packages
 on a native Intel runner and checks their architecture before publication.
 
 - **Application is not supported on this Mac:** verify that the download matches

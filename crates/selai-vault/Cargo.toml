@@ -11,7 +11,7 @@ aes = {version="0.8.4",features=["zeroize"]}
 argon2 = {version="0.5.3",features=["zeroize"]}
 base64 = "0.22"
 getrandom = "0.4"
-selai-storage = { path = "../selai-storage", version = "0.4.2" }
+selai-storage = { path = "../selai-storage", version = "0.4.3" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

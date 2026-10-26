@@ -164,7 +164,7 @@ jobs:
         run: |
           app=target/release/bundle/macos/Selai.app
           executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
-          lipo -verify_arch "$EXPECTED_MACOS_ARCH" "$app/Contents/MacOS/$executable"
+          lipo "$app/Contents/MacOS/$executable" -verify_arch "$EXPECTED_MACOS_ARCH"
           codesign --verify --deep --strict --verbose=2 "$app"
 
       - name: Sign Windows installers (only when WINDOWS_CERTIFICATE is set)
