@@ -9,6 +9,21 @@ of every platform and live AI provider. Without optional signing secrets,
 Windows and Linux installers are unsigned; macOS apps use ad-hoc signing
 and are not notarized.
 
+## New in 0.4.4
+
+- **Settings page:** move AI task budgets out of History and into Settings,
+  raise the configurable limits to 300 steps and 300 minutes, and provide a
+  direct entry point to vault security controls.
+- **Task-scoped command approvals:** after approving the exact initial command,
+  an operator may allow later free-form commands in that task on the same host.
+  The grant ends when the task ends or the vault locks; commands remain in
+  History and the audit log.
+- **Retained network sessions while locked:** established SFTP sessions and
+  port-forwarding listeners stay alive while the vault is locked. Active file
+  transfers and tunnel traffic may continue until Selai exits.
+
+No vault database migration is included in this release.
+
 ## New in 0.4.3
 
 The release workflow now builds separate Apple Silicon (`aarch64`) and Intel
@@ -123,8 +138,8 @@ agent task budgets from the UI.
 - **Choose chat models in the composer:** select a provider and load its available
   models while chatting. Provider settings are for connecting and testing. Server
   tasks remain restricted to the model verified for tool calling.
-- **Configurable task budgets:** choose up to 30 agent steps and 30 minutes in
-  History. The default is 30 steps or 30 minutes; changing a saved preference
+- **Configurable task budgets:** choose up to 300 agent steps and 300 minutes in
+  Settings. The default is 30 steps or 30 minutes; changing a saved preference
   affects tasks started afterward. Existing task records and provider profiles
   are retained.
 - **Refreshed walkthrough:** the README now has current screenshots and an inline
@@ -251,8 +266,8 @@ On Windows: `Get-FileHash -Algorithm SHA256 .\<file>` and compare with `SHA256SU
   approval, subject to the optional root grant described below.
 - Commands that need root: the approval card asks for the sudo password when sudo
   asks for one (typed, saved, or the SSH login password). The model never sees it.
-- The first root approval can enable **Allow further root commands in this
-  request on this host**. The in-memory grant ends with the task, cancellation,
+- An approval can enable **Allow further commands in this request on this
+  host**. The in-memory grant ends with the task, cancellation,
   or vault lock; it does not cover another host or request. Commands remain
   recorded in History and the audit log.
 - A dedicated **SSH Keys** page in the left sidebar: generate Ed25519,

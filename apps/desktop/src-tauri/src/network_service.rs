@@ -121,6 +121,25 @@ impl Default for NetworkRegistry {
         }
     }
 }
+impl NetworkRegistry {
+    pub(crate) fn stop_all(&self) {
+        if let Ok(tunnels) = self.tunnels.lock() {
+            for tunnel in tunnels.values() {
+                tunnel.stop.cancel();
+            }
+        }
+        if let Ok(transfers) = self.transfers.lock() {
+            for transfer in transfers.values() {
+                transfer.stop.cancel();
+            }
+        }
+        if let Ok(sessions) = self.sftp.lock() {
+            for session in sessions.values() {
+                session.stop.cancel();
+            }
+        }
+    }
+}
 
 impl Services {
     pub fn proxy_list(&self) -> Result<Vec<ProxyView>, CommandError> {
@@ -352,7 +371,9 @@ impl Services {
                 sink(view);
             }
         });
-        let stop = self.agent.drain.child_token();
+        // Keep the established listener and SSH tunnel alive through a vault
+        // lock. The shared registry stops it when the application exits.
+        let stop = CancellationToken::new();
         let view = Arc::new(Mutex::new(stopped(profile.clone())));
         {
             let mut registry = state_lock(&self.network.tunnels)?;
@@ -413,7 +434,9 @@ impl Services {
         });
         Ok(initial)
     }
+    #[cfg(test)]
     pub(crate) async fn close_network(&self) {
+        self.network.stop_all();
         if let Ok(tunnels) = self.network.tunnels.lock() {
             for t in tunnels.values() {
                 t.stop.cancel();

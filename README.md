@@ -3,9 +3,9 @@
 <h1 align="center">Selai</h1>
 
 <p align="center"><strong>A desktop SSH workbench with AI assistance, tunnels, and proxies.</strong><br>
-SSH profiles, terminals, AI chat, port forwarding, and proxies in one app. You choose where the assistant may work and approve its commands, with optional root approval for one request on one host.</p>
+SSH profiles, terminals, AI chat, port forwarding, and proxies in one app. You choose where the assistant may work and approve its commands, with optional task-scoped command approval on one host.</p>
 
-<p align="center"><sub>Preview 0.4.3 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
+<p align="center"><sub>Preview 0.4.4 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
 
 <p align="center">
   <a href="#quick-demo">Demo</a> ·
@@ -23,9 +23,12 @@ https://github.com/user-attachments/assets/2e0f8ef4-4df9-4208-8b55-97e4cbb33f00
 Selai brings SSH profiles, terminal tabs, AI assistance, port forwarding, and
 reusable proxies into one desktop app. You choose the machine the assistant may work on. Routine
 diagnostics use fixed commands; other commands need approval before they run.
-For a multi-step root task, you can approve further root commands for that
-request on that host. SSH credentials stay in your passphrase-protected local vault and are
+For a multi-step task, an approval can allow further commands for that request
+on that host. SSH credentials stay in your passphrase-protected local vault and are
 never included in requests to an AI provider.
+
+Task step and time budgets, along with vault security controls, are available
+from the **Settings** page.
 
 - **You choose the machine.** A task is bound to the servers you select, or to
   This computer. The model cannot move it to another host.
@@ -37,12 +40,25 @@ never included in requests to an AI provider.
 - **Everything is recorded.** Each request, command, outcome, and token count is
   saved to History, with an audit record written before remote execution.
 
-> **Version 0.4.3 is a preview.** Automated coverage includes Linux SSH and agent
+> **Version 0.4.4 is a preview.** Automated coverage includes Linux SSH and agent
 > flows with an OpenSSH fixture and mock AI providers, plus Windows encryption
 > and vault checks in the release build profile. Full interactive SSH and live
 > provider coverage across all platforms is not established. See [current milestone evidence](docs/release/milestones.md)
 > and [known security limits](SECURITY.md) before using Selai with sensitive
 > systems.
+
+## New in 0.4.4
+
+- **Settings page:** configure AI task budgets up to 300 steps or 300 minutes and
+  open vault security controls from one place.
+- **More precise command approvals:** optionally approve later commands in the
+  same task and host after reviewing the initial command.
+- **Sessions continue while locked:** established SFTP sessions and port
+  forwards stay active; in-progress transfers and tunnel traffic may continue
+  until Selai exits.
+
+See the [0.4.4 release](https://github.com/f3ci/selai/releases/tag/v0.4.4) and
+[release notes](docs/release/RELEASE_NOTES.md).
 
 ## New in 0.4.3
 
@@ -98,8 +114,10 @@ See the [0.3.2 release notes](docs/release/RELEASE_NOTES.md) and
   including extensionless files, and import it into the encrypted vault.
 - Recall earlier chat prompts with the up and down arrows at the start or end
   of the composer. Missing `@host` mentions must be resolved before sending.
-- Lock the vault while keeping existing terminal connections on standby. Terminal
-  input stays blocked until unlock; close a tab or quit Selai to disconnect it.
+- Lock the vault while keeping existing terminal, SFTP, and port-forwarding
+  connections alive. Active file transfers and tunnels may continue reading,
+  writing, or carrying local traffic while locked. Terminal input and new file
+  operations stay blocked until unlock. Quit Selai to disconnect retained sessions.
 - The assistant receives the selected target's host label and connection address,
   and completed command output is refreshed from the recorded task timeline.
 
@@ -112,7 +130,7 @@ See the [0.3.1 release notes](docs/release/RELEASE_NOTES.md),
 - Choose a provider and any available model directly in the chat composer. Provider
   settings focus on connecting and testing tool support; server tasks still require
   the model verified for tool calling.
-- Set the AI task budget in **History**: up to 30 steps and 30 minutes per task.
+- Set the AI task budget in **Settings**: up to 300 steps and 300 minutes per task.
   Defaults are 30 steps and 30 minutes; saved changes apply to new tasks.
 - Updated screenshots and an inline MP4 walkthrough cover SSH profiles, AI Assistant,
   port forwarding, and proxies.
@@ -179,7 +197,7 @@ provider is contacted. [Recording details and reproduction steps](docs/media/REA
 | **Host verification** | Inspect and explicitly trust a fingerprint on first connection. A changed host key blocks connection until you confirm its replacement. |
 | **Terminal** | Open interactive SSH terminals in tabs, resize them, adjust the terminal font with Ctrl+Plus or Ctrl+Minus, see connection and exit status, reconnect, and edit a host after a failed login. Terminal colors follow the selected theme, including all four Catppuccin flavors, without reconnecting. Open a terminal for **This computer** too. |
 | **AI chat** | Discuss a question without a server, or bind a task to one or more SSH hosts or This computer. Mention hosts with `@` for one message to run independent tasks in parallel, follow the focused terminal, or pin a server in the chat. Each host has its own output and change approvals. Assistant replies render Markdown, tables, task lists, code blocks, and Mermaid diagrams. |
-| **Command control** | Fixed diagnostics may run without a prompt. Other commands need approval; a root approval can optionally cover further root commands in the same request on the same host. Denied, expired, and interrupted work is not replayed automatically. |
+| **Command control** | Fixed diagnostics may run without a prompt. Other commands need approval; an approval can optionally cover further commands in the same request on the same host. Denied, expired, and interrupted work is not replayed automatically. |
 | **Providers** | Configure OpenAI Responses, OpenAI Chat Completions and compatible endpoints, or Anthropic Messages. Check an API key, choose or enter a model ID, and test a real tool-call round trip. |
 | **History** | Search saved AI sessions by title, then open a session to review its requests and command executions across servers, including status, exit codes and stored output. Browse by host for older tasks, provider token counts, timeline filters, encrypted history exports and output retention. |
 | **Profile import** | Preview CSV, JSON, password-protected KDBX, or OpenSSH config profiles before import. Upload a config file or read `~/.ssh/config` directly. Use the shared CSV template for exports from other tools. Existing hosts are not replaced. |
@@ -380,14 +398,12 @@ access is handled through `sudo`; the sudo password goes to that machine's
 prompt, never to the model. The same approval rules apply to **This computer**,
 where an approved command runs with your local user account's access.
 
-For multi-step root work, the first root approval offers **Allow further root
-commands in this request on this host**. Tick it before approving to let later
-root commands in that task continue without another prompt. The grant is held
-in memory and ends when the task finishes or is cancelled, or the vault locks.
-It does not cover another request or host; non-root free-form commands still
-need their own approval. Covered root commands have a five-minute command limit
-within the task's ten-minute total limit. The commands and use of the grant
-remain recorded in History and the audit log.
+For multi-step work, an approval offers **Allow further commands in this
+request on this host**. Tick it before approving to let later commands in that
+task continue without another prompt. The grant is held in memory and ends when
+the task finishes or is cancelled, or the vault locks. It does not cover another
+request or host. Commands and use of the grant remain recorded in History and
+the audit log.
 
 Command output is available in **History**, along with the task, outcome, and
 token usage. Selai stores bounded, pattern-redacted output previews and an
@@ -439,12 +455,13 @@ are kept; **Security** shows pending cleanup and offers a retry. Old exports
 remain accessible under **Security → Migrated history exports**. Missing private
 key files remain external references until you replace them with an available file.
 
-Unlock once each time Selai starts. **Lock** in the header keeps terminal
-connections on standby and blocks terminal input and new commands. With active AI work you can let
+Unlock once each time Selai starts. **Lock** in the header keeps terminal, SFTP,
+and port-forwarding connections established and blocks terminal input and new commands. Active file transfers continue while locked. With active AI work you can let
 the current command finish, or cancel immediately. The workspace is hidden
 while work drains; it is reported locked only after the database closes and the
-vault key is dropped. Terminal transport keys and bounded output buffers remain
-in memory until you close their tabs or quit Selai. A cancelled AI command may still run on its server;
+vault key is dropped. Terminal, SFTP, and tunnel session state remains in memory
+until disconnected or Selai quits; live tunnels and active transfers can carry
+traffic or file data while locked. A cancelled AI command may still run on its server;
 Selai never replays it automatically. Reopening chat history restores the latest
 session without executing its commands. Unlocking resumes the existing terminal
 sessions; restarting Selai requires opening new terminal connections.
@@ -484,7 +501,7 @@ Keep the old folder until you have verified the restored hosts and history.
 
 ### Install a preview build
 
-Download [Selai 0.4.3 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.4.3).
+Download [Selai 0.4.4 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.4.4).
 Builds are also available from the **Release packaging** workflow artifacts.
 Packages are provided for:
 

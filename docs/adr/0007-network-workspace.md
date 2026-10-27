@@ -59,9 +59,12 @@ At most 16 tunnels and 64 connections per tunnel can be active. Copies use
 bounded buffers and TCP backpressure. Stopping aborts child connections and
 releases the listener. Saved tunnels never start automatically.
 
-Vault locking cancels all transfers/tunnels, closes SFTP transports, and waits
-for network work to drain before sealing the database. Unlocking starts a new
-network registry. No background connection or listener is recreated implicitly.
+Vault locking prevents new network operations, then seals the database while
+retaining established SFTP sessions, active transfers, and tunnel listeners in
+memory. Transfers and live tunnels may continue reading/writing or carrying
+traffic while locked. Unlocking reattaches the network pages to the retained
+registry; quitting Selai closes these sessions. No connection is recreated
+after a process restart.
 
 Validation includes real OpenSSH forwarding in all three modes, HTTP and SOCKS5
 relay authentication with unchanged SSH pin verification, recursive SFTP

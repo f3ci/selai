@@ -307,7 +307,7 @@ async fn preferences_persist_and_refuse_bad_values() {
             last_provider_id: None,
             output_retention_days: None,
             pinned_host_id: None,
-            task_max_steps: Some(31),
+            task_max_steps: Some(301),
             task_max_minutes: None,
         })
         .unwrap_err();

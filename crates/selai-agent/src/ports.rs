@@ -62,8 +62,8 @@ pub trait ApprovalWaiter: Send + Sync {
         None
     }
 
-    /// Whether the operator enabled root-command approval for this live task.
-    fn task_root_approved(&self, _task: TaskId, _execution: ExecutionId) -> bool {
+    /// Whether the operator enabled command approval for this live task.
+    fn task_command_approved(&self, _task: TaskId, _execution: ExecutionId) -> bool {
         false
     }
 

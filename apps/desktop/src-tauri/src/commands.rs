@@ -743,13 +743,13 @@ pub fn approval_decide(
     approval_id: String,
     approve: bool,
     sudo: Option<SudoAnswerInput>,
-    approve_root_for_task: bool,
+    approve_commands_for_task: bool,
 ) -> Result<(), CommandError> {
-    services(&state)?.approval_decide_with_root_scope(
+    services(&state)?.approval_decide_with_task_scope(
         &approval_id,
         approve,
         sudo,
-        approve_root_for_task,
+        approve_commands_for_task,
     )
 }
 

@@ -207,7 +207,8 @@ impl Services {
         let connection = Arc::new(SftpConnection {
             session,
             client: Arc::new(client),
-            stop: self.agent.drain.child_token(),
+            // Keep the established SFTP session alive through a vault lock.
+            stop: CancellationToken::new(),
             host_id: host_id.into(),
             home: home.clone(),
         });

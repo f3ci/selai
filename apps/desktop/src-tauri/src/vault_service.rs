@@ -91,11 +91,14 @@ pub struct VaultManager {
     last_status: Mutex<Option<VaultStatus>>,
     last_published: std::sync::atomic::AtomicU64,
     terminals: TerminalRegistry,
+    /// Live network sessions outlast the encrypted database lock interval.
+    network: Arc<crate::network_service::NetworkRegistry>,
 }
 
 impl Drop for VaultManager {
     fn drop(&mut self) {
         self.terminals.close();
+        self.network.stop_all();
     }
 }
 pub struct ServiceLease {
@@ -172,6 +175,7 @@ impl VaultManager {
             last_status: Mutex::new(None),
             last_published: std::sync::atomic::AtomicU64::new(0),
             terminals: TerminalRegistry::default(),
+            network: Arc::new(crate::network_service::NetworkRegistry::default()),
             inner: Mutex::new(Inner {
                 vault: None,
                 services: None,
@@ -326,6 +330,7 @@ impl VaultManager {
         let mut services =
             Services::with_shared_database(db.clone(), Arc::new(DatabaseSecrets(db)), report)?;
         services.terminal_registry = self.terminals.clone();
+        services.network = self.network.clone();
         services.export_dir = Some(self.dir.join("exports"));
         services.vault_managed = true;
         let weak = Arc::downgrade(self);
@@ -510,7 +515,6 @@ impl VaultManager {
         };
         self.publish_status();
         let started = Instant::now();
-        services.close_network().await;
         let mut flush_started = None;
         loop {
             if started.elapsed() > Duration::from_secs(65) {
@@ -518,10 +522,7 @@ impl VaultManager {
             }
             {
                 let mut i = self.inner.lock().map_err(error)?;
-                if self.leases.load(Ordering::SeqCst) == 0
-                    && services.agent.active_count() == 0
-                    && services.network_active_count() == 0
-                {
+                if self.leases.load(Ordering::SeqCst) == 0 && services.agent.active_count() == 0 {
                     i.flush_required = true;
                     let at = flush_started.get_or_insert_with(Instant::now);
                     // A hung renderer cannot prevent locking. Up to three

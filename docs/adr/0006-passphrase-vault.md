@@ -38,10 +38,13 @@ tokens can be lost in that exceptional case; execution/audit state is stored
 independently by the backend. Any surviving DB Arc refers to an empty in-memory
 connection after sealing. Reopening reconciles interrupted work without replay.
 Only terminal components remain mounted behind the hidden, inert lock screen;
-forms, chat, and other data views unmount. Terminal output and transport session
-keys therefore remain in process memory while locked. Output parsing pauses
-until unlock; byte credits bound queued output and apply backpressure. Closing a terminal tab or
-exiting Selai ends that transport; the server or network can still disconnect it.
+forms, chat, and other data views unmount. Terminal, SFTP, and forwarding
+transport keys therefore remain in process memory while locked. Terminal output
+parsing pauses until unlock; byte credits bound queued output and apply
+backpressure. SFTP transfers, authenticated sessions, and forwarding listeners
+stay alive. Transfers and live tunnels can continue reading/writing or carrying
+traffic while locked. Closing a terminal tab or quitting Selai ends its transport; the
+server or network can still disconnect it.
 
 Auto-lock uses monotonic time since user interaction. Windows lock state is
 polled every 250 ms using the current process's WTS session, and native power

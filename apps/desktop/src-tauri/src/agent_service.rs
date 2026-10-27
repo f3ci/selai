@@ -52,8 +52,8 @@ pub struct AgentRegistry {
     /// Sudo passwords given with an approval, held in memory until the task
     /// takes them for that one command.
     sudo_passwords: Mutex<HashMap<ApprovalId, SecretValue>>,
-    /// Explicit root-command grants last only for one running task.
-    root_approved_tasks: Mutex<HashMap<TaskId, selai_domain::ExecutionId>>,
+    /// Explicit command grants last only for one running task.
+    command_approved_tasks: Mutex<HashMap<TaskId, selai_domain::ExecutionId>>,
     /// When needed, the password attached to that grant stays in memory only
     /// until the task ends or the vault locks.
     task_sudo_passwords: Mutex<HashMap<TaskId, SecretValue>>,
@@ -75,7 +75,7 @@ impl AgentRegistry {
         if let Ok(mut map) = self.tokens.lock() {
             map.remove(&task);
         }
-        if let Ok(mut tasks) = self.root_approved_tasks.lock() {
+        if let Ok(mut tasks) = self.command_approved_tasks.lock() {
             tasks.remove(&task);
         }
         if let Ok(mut passwords) = self.task_sudo_passwords.lock() {
@@ -115,7 +115,7 @@ impl AgentRegistry {
         if let Ok(mut passwords) = self.task_sudo_passwords.lock() {
             passwords.clear();
         }
-        if let Ok(mut tasks) = self.root_approved_tasks.lock() {
+        if let Ok(mut tasks) = self.command_approved_tasks.lock() {
             tasks.clear();
         }
         if let Ok(mut approvals) = self.approvals.lock() {
@@ -141,13 +141,13 @@ impl AgentRegistry {
             .map(|password| SecretValue::new(password.expose_for_transport().to_vec()))
     }
 
-    fn approve_root_for_task(
+    fn approve_commands_for_task(
         &self,
         task: TaskId,
         first_execution: selai_domain::ExecutionId,
         password: Option<SecretValue>,
     ) {
-        if let Ok(mut tasks) = self.root_approved_tasks.lock() {
+        if let Ok(mut tasks) = self.command_approved_tasks.lock() {
             tasks.insert(task, first_execution);
         }
         if let Some(password) = password {
@@ -214,9 +214,9 @@ impl ApprovalWaiter for RegistryWaiter {
         self.registry.take_sudo_password(approval)
     }
 
-    fn task_root_approved(&self, task: TaskId, execution: selai_domain::ExecutionId) -> bool {
+    fn task_command_approved(&self, task: TaskId, execution: selai_domain::ExecutionId) -> bool {
         self.registry
-            .root_approved_tasks
+            .command_approved_tasks
             .lock()
             .map(|tasks| tasks.get(&task).is_some_and(|first| *first != execution))
             .unwrap_or(false)
@@ -655,15 +655,15 @@ impl Services {
         approve: bool,
         sudo: Option<SudoAnswerInput>,
     ) -> Result<(), CommandError> {
-        self.approval_decide_with_root_scope(approval_id, approve, sudo, false)
+        self.approval_decide_with_task_scope(approval_id, approve, sudo, false)
     }
 
-    pub fn approval_decide_with_root_scope(
+    pub fn approval_decide_with_task_scope(
         &self,
         approval_id: &str,
         approve: bool,
         sudo: Option<SudoAnswerInput>,
-        approve_root_for_task: bool,
+        approve_commands_for_task: bool,
     ) -> Result<(), CommandError> {
         let id: ApprovalId = approval_id
             .parse()
@@ -673,7 +673,7 @@ impl Services {
         } else {
             ApprovalDecision::Deny
         };
-        let task_grant = if approve_root_for_task {
+        let task_grant = if approve_commands_for_task {
             if !approve {
                 return Err(CommandError::new(
                     ErrorCode::InvalidInput,
@@ -689,10 +689,10 @@ impl Services {
                 .get_execution(record.execution)
                 .map_err(|e| storage(&e))?
                 .ok_or_else(|| CommandError::new(ErrorCode::NotFound, "command not found"))?;
-            if !execution.command_redacted.starts_with("sudo ") {
+            if execution.tool_name != "ssh.run_command" {
                 return Err(CommandError::new(
                     ErrorCode::InvalidInput,
-                    "task root approval can only be enabled from a sudo command",
+                    "task command approval can only be enabled from a command",
                 ));
             }
             Some((record.task, record.execution))
@@ -708,8 +708,8 @@ impl Services {
             _ => false,
         };
         let recorded = self.lock_db_pub().and_then(|mut db| {
-            let result = if approve_root_for_task {
-                db.decide_approval_with_root_scope(id, decision, now_ms())
+            let result = if approve_commands_for_task {
+                db.decide_approval_with_task_scope(id, decision, now_ms())
             } else {
                 db.decide_approval(id, decision, now_ms())
             };
@@ -724,7 +724,7 @@ impl Services {
         if let Some((task, execution)) = task_grant {
             let task_password = self.agent.copy_sudo_password(id);
             self.agent
-                .approve_root_for_task(task, execution, task_password);
+                .approve_commands_for_task(task, execution, task_password);
         }
         self.agent.deliver(id, decision);
         Ok(())

@@ -491,9 +491,9 @@ export function approvalDecide(
   approvalId: string,
   approve: boolean,
   sudo?: SudoAnswer,
-  approveRootForTask = false,
+  approveCommandsForTask = false,
 ): Promise<void> {
-  return invoke<void>('approval_decide', { approvalId, approve, sudo: sudo ?? null, approveRootForTask });
+  return invoke<void>('approval_decide', { approvalId, approve, sudo: sudo ?? null, approveCommandsForTask });
 }
 
 export function sudoOptions(approvalId: string): Promise<SudoOptions> {

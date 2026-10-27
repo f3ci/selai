@@ -31,7 +31,8 @@ use crate::{
 /// How long the sudo check may take before it counts as a failure.
 const SUDO_PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 /// A longer install step is allowed only after the operator enabled root
-/// approval for the rest of this task. The task's total wall time stays 10 min.
+/// approval for the rest of this task. The configured task budget controls its
+/// total wall time.
 const TASK_APPROVED_ROOT_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 
 const SYSTEM_PROMPT: &str = "You are Selai's operations assistant for one remote host. \
@@ -416,9 +417,9 @@ where
     let command_text = request.command_text();
     let digest = request.digest();
     let execution = ExecutionId::new();
-    let auto_approved_root =
-        request.runs_as_root() && ctx.waiter.task_root_approved(spec.task, execution);
-    let decision = if auto_approved_root {
+    let auto_approved_task_command = matches!(request, ToolRequest::Command { .. })
+        && ctx.waiter.task_command_approved(spec.task, execution);
+    let decision = if auto_approved_task_command {
         Decision::Allow
     } else {
         evaluate(&scope, &request)
@@ -437,8 +438,8 @@ where
             tool_name: request.tool_name().to_owned(),
             command_redacted: redacted.clone(),
             command_sha256: digest.clone(),
-            policy_decision: if auto_approved_root {
-                "task_root_approval".to_owned()
+            policy_decision: if auto_approved_task_command {
+                "task_command_approval".to_owned()
             } else {
                 decision.as_str().to_owned()
             },
@@ -506,14 +507,17 @@ where
             Ok(given) => password = given,
             Err(reply) => return Ok(reply),
         }
-    } else if auto_approved_root && sudo == Some(SudoStatus::PasswordRequired) {
+    } else if auto_approved_task_command
+        && request.runs_as_root()
+        && sudo == Some(SudoStatus::PasswordRequired)
+    {
         password = ctx.waiter.task_sudo_password(spec.task);
     }
 
-    if auto_approved_root {
+    if auto_approved_task_command {
         ctx.store
             .audit(
-                "task_root_approval_used",
+                "task_command_approval_used",
                 Some(spec.task),
                 Some(execution),
                 &json!({"host_id": host.to_string()}),
@@ -744,7 +748,7 @@ where
     }
     let limits = ctx.spec.limits;
     let command_limit =
-        if request.runs_as_root() && ctx.waiter.task_root_approved(ctx.spec.task, execution) {
+        if request.runs_as_root() && ctx.waiter.task_command_approved(ctx.spec.task, execution) {
             TASK_APPROVED_ROOT_COMMAND_TIMEOUT
         } else {
             limits.max_command

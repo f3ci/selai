@@ -547,9 +547,9 @@ impl Database {
         self.decide_approval_inner(id, decision, now_ms, false)
     }
 
-    /// Atomically records the approval and the operator's task-scoped root
+    /// Atomically records the approval and the operator's task-scoped command
     /// authorization in the same audit chain transaction.
-    pub fn decide_approval_with_root_scope(
+    pub fn decide_approval_with_task_scope(
         &mut self,
         id: ApprovalId,
         decision: ApprovalDecision,
@@ -563,7 +563,7 @@ impl Database {
         id: ApprovalId,
         decision: ApprovalDecision,
         now_ms: i64,
-        root_scope: bool,
+        task_scope: bool,
     ) -> Result<ApprovalRecord, StorageError> {
         let tx = now_tx(self.conn_mut())?;
         let record = approval_in(&tx, id)?
@@ -593,13 +593,13 @@ impl Database {
             &serde_json::json!({"approval_id": id.to_string(), "state": to.as_str()}),
             now_ms,
         )?;
-        if root_scope && to == ApprovalState::Approved {
+        if task_scope && to == ApprovalState::Approved {
             append_audit(
                 &tx,
-                "task_root_approval_enabled",
+                "task_command_approval_enabled",
                 Some(record.task),
                 Some(record.execution),
-                &serde_json::json!({"scope": "root_commands_for_task"}),
+                &serde_json::json!({"scope": "commands_for_task"}),
                 now_ms,
             )?;
         }

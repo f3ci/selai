@@ -49,13 +49,14 @@ copied into chat, localStorage, logs, or audit records. JS/runtime copies cannot
 be guaranteed to be physically erased from memory. Private keys, key passphrases,
 sudo passwords, and provider API keys have no equivalent reveal command.
 
-Locking denies new operations, drains/cancels agent work, closes SFTP and port
-forwarding, closes the encrypted connection, and drops the vault key. Existing
-terminal transports stay connected in standby; their session keys and bounded
-output buffers remain in process memory behind the hidden, inert workspace.
-Forms and chat unmount. Terminal input is blocked until unlock, while output
-acknowledgements may release bounded transport credits. Closing the tab or
-quitting Selai disconnects the terminal. The UI reports
+Locking denies new operations, drains/cancels agent work, closes the encrypted
+connection, and drops the vault key. Existing terminal, SFTP, and
+port-forwarding transports stay connected in process memory. Live tunnels can
+carry local traffic and active file transfers can continue reading and writing
+files while the vault is locked. Forms and chat unmount. Terminal input and new
+SFTP operations are blocked until unlock, while output acknowledgements may
+release bounded transport credits. Closing a connection or quitting Selai
+disconnects it. The UI reports
 **locking** until that finishes. Idle timeout defaults to 15 minutes of app
 inactivity. Windows session lock and suspend notifications request locking;
 a suspended process can finish releasing keys only when it runs again. Linux
@@ -85,8 +86,8 @@ tested on Linux. macOS and Windows are not yet verified for SSH. The agent can
 run commands on a host only through the rules in ADR-0005: the host is fixed by
 the task and diagnostics are fixed commands. By default, free-form commands
 need an approval checked again in the database before execution. The first
-root approval can optionally grant further root commands for that task and host;
-this in-memory grant is described below. Reports about
+an approval can optionally grant further free-form commands for that task and
+host; this in-memory grant is described below. Reports about
 behaviour that is documented as planned (for example encrypted audit blobs, S-040)
 are handled as design feedback.
 
@@ -142,12 +143,12 @@ live tunnels are not restored automatically after restart or unlock.
   SSH password), goes only to sudo's prompt on that host, and is redacted from the
   output. It is never in a model request or plaintext log. "Remember for this
   host" saves it inside the encrypted vault; archiving the host deletes it.
-- **Allow further root commands in this request on this host** approves later
-  root commands only within that running task on its fixed host. The initial
+- **Allow further commands in this request on this host** approves later
+  free-form commands only within that running task on its fixed host. The initial
   command still needs its exact approval. The grant and any sudo password held
   for it stay in memory and are cleared when the task ends or the vault locks.
-  Non-root free-form commands, other requests, and other hosts need separate
-  approval. Grant creation and use are audited; each command remains in History.
+  Other requests and hosts need separate approval. Grant creation and use are
+  audited; each command remains in History.
 - "This computer" runs agent commands as your own user on your own machine, with
   the same approvals. An approved command can read anything your account can read,
   and its output goes to the model like output from a server.

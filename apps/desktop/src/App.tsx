@@ -4,11 +4,12 @@ import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AgentPanel } from './tabs/AgentPanel';
 import { HistoryTab } from './tabs/HistoryTab';
+import { SettingsPage } from './tabs/SettingsPage';
 import { HostsSidebar } from './tabs/HostsSidebar';
 import { ProvidersPanel } from './tabs/ProvidersPanel';
 import { appInfo, describeError, localHost, storageStatus, type AppInfo, type HostView } from './ipc';
 import type { SessionStatus, TerminalSessionTab } from './tabs/TerminalTab';
-import { ClockIcon, CloseIcon, KeyIcon, MaximizeIcon, MinimizeIcon, PlugIcon, PlusIcon, ServerIcon, TerminalIcon, FilesIcon, ForwardIcon, ProxyIcon } from './ui/icons';
+import { ClockIcon, CloseIcon, KeyIcon, MaximizeIcon, MinimizeIcon, PlugIcon, PlusIcon, ServerIcon, TerminalIcon, FilesIcon, ForwardIcon, ProxyIcon, ShieldIcon } from './ui/icons';
 import { SelaiLogo } from './ui/SelaiLogo';
 import { VaultGate } from './VaultGate';
 import { VaultWorkspacePhase } from './vaultWorkspace';
@@ -26,10 +27,10 @@ const ForwardingPage = lazy(() => import('./tabs/ForwardingPage').then((m) => ({
 const ProxiesPage = lazy(() => import('./tabs/ProxiesPage').then((m) => ({ default: m.ProxiesPage })));
 
 /** A tab in the centre area: a terminal, or one of the pages that open as a tab. */
-type PageId = 'history' | 'providers' | 'keys' | 'sftp' | 'forwarding' | 'proxies';
+type PageId = 'history' | 'providers' | 'keys' | 'sftp' | 'forwarding' | 'proxies' | 'settings';
 type EditorTab = ({ kind: 'terminal' } & TerminalSessionTab) | { kind: PageId; key: PageId };
 
-const PAGE_TITLES: Record<PageId, string> = { history: 'History', providers: 'Providers', keys: 'SSH Keys', sftp: 'SFTP', forwarding: 'Port forwarding', proxies: 'Proxies' };
+const PAGE_TITLES: Record<PageId, string> = { history: 'History', providers: 'Providers', keys: 'SSH Keys', sftp: 'SFTP', forwarding: 'Port forwarding', proxies: 'Proxies', settings: 'Settings' };
 
 let nextTabNumber = 0;
 
@@ -338,7 +339,6 @@ export function Workbench() {
           {connectedSessions} connected
         </span>
         <UpdateButton />
-        <button type="button" className="btn btn-sm" title="Vault security settings" onClick={() => window.dispatchEvent(new Event('selai:security'))}>Security</button>
         <button type="button" className="btn btn-sm" title="Lock vault" onClick={() => window.dispatchEvent(new Event('selai:lock'))}>Lock</button>
         <button
           type="button"
@@ -367,6 +367,7 @@ export function Workbench() {
           {activity('Proxies', <ProxyIcon size={20} />, active?.kind === 'proxies', () => openPage('proxies'))}
           {activity('History', <ClockIcon size={20} />, active?.kind === 'history', () => openPage('history'))}
           {activity('Providers', <PlugIcon size={20} />, active?.kind === 'providers', () => openPage('providers'))}
+          {activity('Settings', <ShieldIcon size={20} />, active?.kind === 'settings', () => openPage('settings'))}
         </nav>
 
         <aside className="sidebar" hidden={!sidebarOpen} style={{ width: side.width }}>
@@ -451,6 +452,11 @@ export function Workbench() {
             {workspaceAvailable && tabs.some((t) => t.kind === 'providers') && (
               <div className="editor-page" hidden={active?.kind !== 'providers'}>
                 <ProvidersPanel />
+              </div>
+            )}
+            {workspaceAvailable && tabs.some((t) => t.kind === 'settings') && (
+              <div className="editor-page" hidden={active?.kind !== 'settings'}>
+                <SettingsPage />
               </div>
             )}
             {workspaceAvailable && tabs.some((t) => t.kind === 'keys') && (

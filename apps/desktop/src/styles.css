@@ -3000,6 +3000,32 @@ option {
   padding: 0.9rem 1rem;
 }
 
+.settings-page > .card {
+  padding: 1rem 1.1rem;
+  margin: 0 0 0.85rem;
+}
+
+.settings-page > .card h2 {
+  margin: 0 0 0.45rem;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-page > .card > p {
+  margin: 0 0 0.9rem;
+}
+
+.settings-page .form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.settings-page .form-row .field {
+  min-width: 160px;
+}
+
 .task-request {
   padding: 0.8rem 0.95rem;
   margin-bottom: 1rem;

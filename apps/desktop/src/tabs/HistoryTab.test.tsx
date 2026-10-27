@@ -92,34 +92,6 @@ async function showCommands() {
 }
 
 describe('HostHistoryTab', () => {
-  it('lets the operator configure the task step and time limits', async () => {
-    mockHistory();
-    vi.spyOn(ipc, 'preferencesGet').mockResolvedValue({
-      lastProviderId: null,
-      outputRetentionDays: 30,
-      pinnedHostId: null,
-      taskMaxSteps: 30,
-      taskMaxMinutes: 30,
-    });
-    const save = vi.spyOn(ipc, 'preferencesSet').mockResolvedValue({
-      lastProviderId: null,
-      outputRetentionDays: 30,
-      pinnedHostId: null,
-      taskMaxSteps: 12,
-      taskMaxMinutes: 15,
-    });
-    render(<HostHistoryTab visible />);
-
-    const steps = await screen.findByLabelText('Maximum steps');
-    const minutes = screen.getByLabelText('Time limit (minutes)');
-    fireEvent.change(steps, { target: { value: '12' } });
-    fireEvent.change(minutes, { target: { value: '15' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save task limits' }));
-
-    await waitFor(() => expect(save).toHaveBeenCalledWith({ taskMaxSteps: 12, taskMaxMinutes: 15 }));
-    expect(await screen.findByRole('status')).toHaveTextContent('12 steps or 15 minutes');
-  });
-
   it('lists the chosen host history, including archived hosts', async () => {
     const query = mockHistory();
     render(<HostHistoryTab visible />);

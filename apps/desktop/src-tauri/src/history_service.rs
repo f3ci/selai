@@ -417,13 +417,13 @@ impl Services {
             db.get_setting(TASK_MAX_STEPS_KEY)
                 .map_err(|e| storage(&e))?,
             DEFAULT_TASK_MAX_STEPS,
-            1..=30,
+            1..=300,
         );
         let task_max_minutes = preference_u32(
             db.get_setting(TASK_MAX_MINUTES_KEY)
                 .map_err(|e| storage(&e))?,
             DEFAULT_TASK_MAX_MINUTES,
-            1..=30,
+            1..=300,
         );
         Ok(AiPreferences {
             last_provider_id: last,
@@ -489,20 +489,20 @@ impl Services {
                 .map_err(|e| storage(&e))?;
         }
         if let Some(steps) = input.task_max_steps {
-            if !(1..=30).contains(&steps) {
+            if !(1..=300).contains(&steps) {
                 return Err(CommandError::new(
                     ErrorCode::InvalidInput,
-                    "task step limit must be 1 to 30",
+                    "task step limit must be 1 to 300",
                 ));
             }
             db.set_setting(TASK_MAX_STEPS_KEY, &json!(steps), now)
                 .map_err(|e| storage(&e))?;
         }
         if let Some(minutes) = input.task_max_minutes {
-            if !(1..=30).contains(&minutes) {
+            if !(1..=300).contains(&minutes) {
                 return Err(CommandError::new(
                     ErrorCode::InvalidInput,
-                    "task time limit must be 1 to 30 minutes",
+                    "task time limit must be 1 to 300 minutes",
                 ));
             }
             db.set_setting(TASK_MAX_MINUTES_KEY, &json!(minutes), now)
