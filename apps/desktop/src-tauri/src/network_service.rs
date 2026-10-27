@@ -434,7 +434,7 @@ impl Services {
         });
         Ok(initial)
     }
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "linux"))]
     pub(crate) async fn close_network(&self) {
         self.network.stop_all();
         if let Ok(tunnels) = self.network.tunnels.lock() {
