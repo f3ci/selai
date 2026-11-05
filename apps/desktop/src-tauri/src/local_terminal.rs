@@ -70,6 +70,8 @@ pub(crate) fn spawn_local_shell(
     on_end: Box<dyn FnOnce() + Send>,
 ) -> Result<Arc<dyn Fn() + Send + Sync>, CommandError> {
     let mut cmd = default_shell(distribution)?;
+    #[cfg(target_os = "linux")]
+    crate::appimage_env::sanitize_pty_command(&mut cmd);
     let pair = native_pty_system()
         .openpty(pty_size(cols, rows))
         .map_err(|e| failure("could not open a terminal", &e))?;

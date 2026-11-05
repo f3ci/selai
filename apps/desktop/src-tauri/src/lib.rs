@@ -2,6 +2,8 @@
 //! Authorization lives in `service` and the Rust crates, never in the webview.
 
 pub mod agent_service;
+#[cfg(any(target_os = "linux", test))]
+mod appimage_env;
 pub mod chat_service;
 pub mod chat_sessions;
 pub mod commands;

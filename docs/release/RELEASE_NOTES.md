@@ -9,6 +9,16 @@ of every platform and live AI provider. Without optional signing secrets,
 Windows and Linux installers are unsigned; macOS apps use ad-hoc signing
 and are not notarized.
 
+## New in 0.4.5
+
+- **Fedora AppImage local shell fix:** local terminal and local AI command
+  processes now remove library search paths pointing inside the mounted
+  AppImage. This prevents a bundled `libcrypto.so.3` from being loaded alongside
+  Fedora's system `libssl.so.3`. Other library paths supplied by the user are
+  retained.
+
+No vault database migration is included in this release.
+
 ## New in 0.4.4
 
 - **Settings page:** move AI task budgets out of History and into Settings,

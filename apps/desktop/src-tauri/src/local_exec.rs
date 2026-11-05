@@ -126,6 +126,8 @@ impl RemoteExecutor for LocalExecutor {
 
 fn spawn(command: &str, with_stdin: bool, distribution: Option<&str>) -> Result<Child, SshError> {
     let mut cmd = shell(command, distribution);
+    #[cfg(target_os = "linux")]
+    crate::appimage_env::sanitize_tokio_command(&mut cmd);
     cmd.stdin(if with_stdin {
         Stdio::piped()
     } else {
