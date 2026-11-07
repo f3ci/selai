@@ -5,7 +5,7 @@
 <p align="center"><strong>A desktop SSH workbench with AI assistance, tunnels, and proxies.</strong><br>
 SSH profiles, terminals, AI chat, port forwarding, and proxies in one app. You choose where the assistant may work and approve its commands, with optional task-scoped command approval on one host.</p>
 
-<p align="center"><sub>Preview 0.4.5 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
+<p align="center"><sub>Preview 0.4.6 · Apache 2.0 · Windows, Linux, and macOS · Tauri 2, Rust, and React</sub></p>
 
 <p align="center">
   <a href="#quick-demo">Demo</a> ·
@@ -40,12 +40,20 @@ from the **Settings** page.
 - **Everything is recorded.** Each request, command, outcome, and token count is
   saved to History, with an audit record written before remote execution.
 
-> **Version 0.4.5 is a preview.** Automated coverage includes Linux SSH and agent
+> **Version 0.4.6 is a preview.** Automated coverage includes Linux SSH and agent
 > flows with an OpenSSH fixture and mock AI providers, plus Windows encryption
 > and vault checks in the release build profile. Full interactive SSH and live
 > provider coverage across all platforms is not established. See [current milestone evidence](docs/release/milestones.md)
 > and [known security limits](SECURITY.md) before using Selai with sensitive
 > systems.
+
+## New in 0.4.6
+
+- **OpenAI tool-calling checks:** the provider check now requires the initial tool call and verifies that the model returns a final answer after receiving its result.
+- **Settings locations and updates:** Settings shows the vault data and application locations, and the version control is labeled **Check for updates**.
+
+See the [0.4.6 release](https://github.com/f3ci/selai/releases/tag/v0.4.6) and
+[release notes](docs/release/RELEASE_NOTES.md).
 
 ## New in 0.4.5
 
@@ -510,7 +518,7 @@ Keep the old folder until you have verified the restored hosts and history.
 
 ### Install a preview build
 
-Download [Selai 0.4.5 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.4.5).
+Download [Selai 0.4.6 from GitHub Releases](https://github.com/f3ci/selai/releases/tag/v0.4.6).
 Builds are also available from the **Release packaging** workflow artifacts.
 Packages are provided for:
 

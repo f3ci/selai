@@ -45,6 +45,14 @@ pub struct AppInfo {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AppPaths {
+    pub vault_directory: String,
+    pub install_directory: String,
+    pub executable_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StorageStatus {
     pub schema_version: i64,
     pub journal_mode: String,

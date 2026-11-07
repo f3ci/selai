@@ -109,6 +109,7 @@ pub fn run() {
             commands::ssh_auth_watch,
             commands::ssh_auth_answer,
             commands::app_info,
+            commands::app_paths,
             commands::vault_status,
             commands::vault_watch,
             commands::vault_activity,

@@ -70,7 +70,10 @@ export function UpdateVersion({ version }: { version?: string }) {
   if (!updates) return <span className="status-item">{version ? `Selai ${version}` : ''}</span>;
   return <button type="button" className="status-item update-version" title="Check for updates" onClick={() => {
     updates.show(); void updates.refresh();
-  }}>{version ? `Selai ${version}` : 'Updates'}</button>;
+  }} aria-label={`Selai ${version ?? ''}. Check for updates`}>
+    <span>{version ? `Selai ${version}` : 'Updates'}</span>
+    <span className="update-version-action"><RefreshIcon size={13} />Check for updates</span>
+  </button>;
 }
 
 function UpdateDialog({ updates, close }: { updates: Updates; close: () => void }) {

@@ -10,7 +10,7 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    client::{LlmClient, TurnRequest},
+    client::{LlmClient, ToolChoice, TurnRequest},
     error::sanitize,
     LlmError, Message, ToolDefinition,
 };
@@ -102,12 +102,12 @@ pub async fn probe_tools(
     let started = Instant::now();
     let tools = [echo_tool()];
     let first = Message::User(format!(
-        "Call the {PROBE_TOOL} tool once with text set to {PROBE_TOKEN}. Do not answer in plain text."
+        "This is a two-step tool test. In this response, call the {PROBE_TOOL} tool exactly once with text set to {PROBE_TOKEN} and return only the tool call. After I send the tool result, reply in one short plain-text sentence confirming that result. Do not call any tools again."
     ));
     let first_messages = [first.clone()];
 
     let turn = client
-        .run_turn(
+        .run_turn_with_tool_choice(
             TurnRequest {
                 settings,
                 api_key: key,
@@ -116,6 +116,7 @@ pub async fn probe_tools(
             },
             None,
             cancel,
+            ToolChoice::Required,
         )
         .await;
     let outcome = match turn {
@@ -169,7 +170,7 @@ pub async fn probe_tools(
                 settings,
                 api_key: key,
                 messages: &second_messages,
-                tools: &tools,
+                tools: &[],
             },
             None,
             cancel,

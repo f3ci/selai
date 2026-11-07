@@ -17,7 +17,8 @@
 .update-button:hover { background: var(--surface-2); }
 .update-button:focus-visible,
 .update-version:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.update-version { border: 0; background: transparent; cursor: pointer; }
+.update-version { border: 0; background: transparent; cursor: pointer; font: inherit; color: inherit; }
+.update-version-action { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
 .update-version:hover { color: var(--fg); }
 
 .update-dialog {

@@ -7,6 +7,12 @@ export interface AppInfo {
   version: string;
 }
 
+export interface AppPaths {
+  vaultDirectory: string;
+  installDirectory: string;
+  executablePath: string;
+}
+
 export interface ReleaseUpdate {
   version: string;
   notes: string;
@@ -132,6 +138,10 @@ export type TerminalEvent =
 
 export function appInfo(): Promise<AppInfo> {
   return invoke<AppInfo>('app_info');
+}
+
+export function appPaths(): Promise<AppPaths> {
+  return invoke<AppPaths>('app_paths');
 }
 
 export function storageStatus(): Promise<StorageStatus> {

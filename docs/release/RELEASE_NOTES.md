@@ -9,6 +9,14 @@ of every platform and live AI provider. Without optional signing secrets,
 Windows and Linux installers are unsigned; macOS apps use ad-hoc signing
 and are not notarized.
 
+## New in 0.4.6
+
+- **OpenAI tool-calling check:** require the probe model to make the requested tool call, then check for a final answer after its result is returned. This avoids treating a missing follow-up as a valid tool-calling flow.
+- **Settings locations:** show the vault data folder, application folder, and executable path.
+- **Clearer update action:** label the version control **Check for updates**.
+
+No vault database migration is included in this release.
+
 ## New in 0.4.5
 
 - **Fedora AppImage local shell fix:** local terminal and local AI command

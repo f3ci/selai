@@ -10,7 +10,7 @@ use futures_util::StreamExt;
 use reqwest::{redirect::Policy, StatusCode};
 use selai_domain::{BaseUrl, ErrorCode, ProviderProtocol, ProviderSettings};
 use selai_secrets::SecretValue;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -55,6 +55,12 @@ pub struct TurnRequest<'a> {
     pub tools: &'a [ToolDefinition],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ToolChoice {
+    Auto,
+    Required,
+}
+
 impl LlmClient {
     pub fn new(options: ClientOptions) -> Result<Self, LlmError> {
         let mut builder = reqwest::Client::builder()
@@ -80,6 +86,17 @@ impl LlmClient {
         sink: Option<&mpsc::Sender<AgentEvent>>,
         cancel: &CancellationToken,
     ) -> Result<TurnOutcome, LlmError> {
+        self.run_turn_with_tool_choice(req, sink, cancel, ToolChoice::Auto)
+            .await
+    }
+
+    pub(crate) async fn run_turn_with_tool_choice(
+        &self,
+        req: TurnRequest<'_>,
+        sink: Option<&mpsc::Sender<AgentEvent>>,
+        cancel: &CancellationToken,
+        tool_choice: ToolChoice,
+    ) -> Result<TurnOutcome, LlmError> {
         let s = req.settings;
         let key_text = req
             .api_key
@@ -97,7 +114,7 @@ impl LlmClient {
             ));
         }
         let max = s.max_output_tokens.tokens();
-        let body = match s.protocol {
+        let mut body = match s.protocol {
             ProviderProtocol::OpenAiChat => {
                 adapters::chat::body(s.model_id.as_str(), max, req.messages, req.tools)
             }
@@ -108,6 +125,14 @@ impl LlmClient {
                 adapters::anthropic::body(s.model_id.as_str(), max, req.messages, req.tools)
             }
         };
+        if !req.tools.is_empty() && tool_choice == ToolChoice::Required {
+            body["tool_choice"] = match s.protocol {
+                ProviderProtocol::AnthropicMessages => json!({"type": "any"}),
+                ProviderProtocol::OpenAiChat | ProviderProtocol::OpenAiResponses => {
+                    json!("required")
+                }
+            };
+        }
         let url = adapters::endpoint(s.protocol, s.base_url.as_str());
         let response = self
             .send_with_retry(s, key_text, &url, &body, cancel)

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { describeError, preferencesGet, preferencesSet } from '../ipc';
+import { appPaths, describeError, preferencesGet, preferencesSet, type AppPaths } from '../ipc';
 
 export function SettingsPage() {
   const [maxSteps, setMaxSteps] = useState(30);
@@ -7,6 +7,7 @@ export function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paths, setPaths] = useState<AppPaths | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -15,6 +16,13 @@ export function SettingsPage() {
       setMaxSteps(prefs.taskMaxSteps);
       setMaxMinutes(prefs.taskMaxMinutes);
     }).catch((err: unknown) => active && setError(describeError(err)));
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    appPaths().then((value) => active && setPaths(value))
+      .catch((err: unknown) => active && setError(describeError(err)));
     return () => { active = false; };
   }, []);
 
@@ -69,6 +77,16 @@ export function SettingsPage() {
         <button type="button" className="btn" onClick={() => window.dispatchEvent(new Event('selai:security'))}>
           Open vault security
         </button>
+      </section>
+
+      <section className="card" aria-labelledby="settings-locations">
+        <h2 id="settings-locations">Data and installation</h2>
+        <p className="muted">Vault data is stored separately from the application files.</p>
+        {paths ? <dl className="settings-paths">
+          <div><dt>Vault data folder</dt><dd title={paths.vaultDirectory}>{paths.vaultDirectory}</dd></div>
+          <div><dt>Application folder</dt><dd title={paths.installDirectory}>{paths.installDirectory}</dd></div>
+          <div><dt>Application file</dt><dd title={paths.executablePath}>{paths.executablePath}</dd></div>
+        </dl> : <p className="muted">Loading locations…</p>}
       </section>
 
       {error && <p className="banner" role="alert" data-tone="danger">{error}</p>}

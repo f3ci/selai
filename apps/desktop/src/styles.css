@@ -3026,6 +3026,23 @@ option {
   min-width: 160px;
 }
 
+.settings-paths {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.settings-paths > div { min-width: 0; }
+.settings-paths dt { margin-bottom: 0.2rem; color: var(--muted); font-size: 12px; }
+.settings-paths dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--fg-strong);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  user-select: text;
+}
+
 .task-request {
   padding: 0.8rem 0.95rem;
   margin-bottom: 1rem;

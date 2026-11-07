@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use selai_domain::{ErrorCode, Page};
-use tauri::{ipc::Channel, State};
+use tauri::{ipc::Channel, AppHandle, Manager, State};
 
 use crate::{
     agent_service::{
@@ -13,7 +13,7 @@ use crate::{
     chat_service::{ChatEventView, ChatMessageInput},
     chat_sessions::{ChatSessionInput, ChatSessionView},
     dto::{
-        AppInfo, CommandError, GroupView, HostInput, HostView, ModelsView, ProbeView,
+        AppInfo, AppPaths, CommandError, GroupView, HostInput, HostView, ModelsView, ProbeView,
         ProviderInput, ProviderModelsInput, ProviderTestView, ProviderView, StorageStatus,
         TemplateView, TerminalEvent, TrustMode, TrustView,
     },
@@ -248,6 +248,50 @@ pub async fn vault_action(
 #[tauri::command]
 pub fn app_info() -> AppInfo {
     Services::app_info()
+}
+
+#[tauri::command]
+pub fn app_paths(app: AppHandle) -> Result<AppPaths, CommandError> {
+    let vault_directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| CommandError::new(ErrorCode::StorageIo, err.to_string()))?;
+    let executable = std::env::current_exe()
+        .map_err(|err| CommandError::new(ErrorCode::StorageIo, err.to_string()))?;
+
+    #[cfg(target_os = "linux")]
+    let install_directory = std::env::var_os("APPIMAGE")
+        .and_then(|path| {
+            std::path::PathBuf::from(path)
+                .parent()
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| executable.parent().map(ToOwned::to_owned));
+    #[cfg(not(target_os = "linux"))]
+    let install_directory = executable.parent().map(ToOwned::to_owned);
+
+    #[cfg(target_os = "macos")]
+    let install_directory = install_directory
+        .and_then(|directory| {
+            directory
+                .ancestors()
+                .find(|ancestor| ancestor.extension().is_some_and(|ext| ext == "app"))
+                .map(ToOwned::to_owned)
+        })
+        .or_else(|| executable.parent().map(ToOwned::to_owned));
+
+    let install_directory = install_directory.ok_or_else(|| {
+        CommandError::new(
+            ErrorCode::StorageIo,
+            "Could not determine application directory.",
+        )
+    })?;
+
+    Ok(AppPaths {
+        vault_directory: vault_directory.display().to_string(),
+        install_directory: install_directory.display().to_string(),
+        executable_path: executable.display().to_string(),
+    })
 }
 
 #[tauri::command]
